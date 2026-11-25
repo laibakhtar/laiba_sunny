@@ -3,8 +3,9 @@ import userEvent from '@testing-library/user-event';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from './App';
 import { AiRequestError } from './conversation/aiClient';
-import { projectWealthComparison } from './lib/calc';
+import { calculateMortgageScenario, projectWealthComparison } from './lib/calc';
 import type { ChatRequest, ChatResponse, StatusResponse } from './shared/api';
+import { getOffering, offeringUrl } from './shared/offerings';
 
 beforeAll(() => {
   vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
@@ -178,9 +179,34 @@ describe('live AI mode (mocked API)', () => {
     await user.click(await screen.findByRole('button', { name: 'Ask Sunny' }));
     for (let i = 0; i < products.length; i += 1) {
       await user.type(screen.getByLabelText('Message Sunny'), `${products[i].text}{Enter}`);
-      const links = await screen.findAllByRole('link', { name: 'Start Application on Tangerine.ca' }, SLOW);
+      const links = await screen.findAllByRole('link', { name: 'Open / Apply on Tangerine.ca' }, SLOW);
       const link = links.at(-1)!;
       expect(link).toHaveAttribute('href', products[i].href);
+      expect(link).toHaveAttribute('target', '_blank');
+      expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+    }
+  }, 30000);
+
+  it('renders direct clickable next-step links for TFSA, GIC and mortgage products', async () => {
+    const user = userEvent.setup();
+    const products = ['tfsa', 'gic', 'mortgage'] as const;
+    const chat = vi.fn(async (body: ChatRequest): Promise<ChatResponse> => {
+      const text = body.messages.at(-1)?.text ?? '';
+      const productId = products.find((id) => text.includes(id))!;
+      return {
+        reply: 'Use the official product page.',
+        sourceIds: [],
+        suggestions: [],
+        effects: [{ type: 'signupPrepared', productId }],
+      };
+    });
+    render(<App status={aiOn} chat={chat} />);
+    await user.click(await screen.findByRole('button', { name: 'Ask Sunny' }));
+    for (const productId of products) {
+      await user.type(screen.getByLabelText('Message Sunny'), `open ${productId}{Enter}`);
+      const links = await screen.findAllByRole('link', { name: 'Open / Apply on Tangerine.ca' }, SLOW);
+      const link = links.at(-1)!;
+      expect(link).toHaveAttribute('href', offeringUrl(getOffering(productId)!));
       expect(link).toHaveAttribute('target', '_blank');
       expect(link).toHaveAttribute('rel', 'noopener noreferrer');
     }
@@ -235,12 +261,41 @@ describe('live AI mode (mocked API)', () => {
     );
   }, 30000);
 
+  it('links mortgage source cards directly to Tangerine calculators and rates', async () => {
+    const user = userEvent.setup();
+    const chat = vi.fn(async (): Promise<ChatResponse> => ({
+      reply: 'Tangerine has mortgage calculators and a mortgage rates page.',
+      sourceIds: ['tng-mortgage'],
+      suggestions: [],
+      effects: [],
+    }));
+    render(<App status={aiOn} chat={chat} />);
+    await user.click(await screen.findByRole('button', { name: 'Ask Sunny' }));
+    await user.type(screen.getByLabelText('Message Sunny'), 'Where can I find Tangerine mortgage calculators and rates?{Enter}');
+    await screen.findByText(/Tangerine has mortgage calculators/);
+    await user.click(screen.getByText('Sources (1)'));
+
+    expect(screen.getByRole('link', { name: 'Mortgage Payment Calculator' })).toHaveAttribute(
+      'href',
+      'https://www.tangerine.ca/en/personal/borrow/mortgage/mortgage-payment-calculator',
+    );
+    expect(screen.getByRole('link', { name: 'Mortgage Affordability Calculator' })).toHaveAttribute(
+      'href',
+      'https://www.tangerine.ca/en/personal/borrow/mortgage/mortgage-affordability-calculator',
+    );
+    expect(screen.getByRole('link', { name: 'Mortgage Rates' })).toHaveAttribute(
+      'href',
+      'https://www.tangerine.ca/en/rates/mortgage-rates',
+    );
+  }, 30000);
+
   it('launches the interactive growth calculator from a starter chip and updates its graph', async () => {
     const user = userEvent.setup();
     const projected = projectWealthComparison({ startingAmount: 1000, monthlyContribution: 100, years: 5 });
     expect(projected.valid).toBe(true);
     const comparison = {
       years: projected.years,
+      tfsaSavingsRate: projected.tfsaSavingsRate,
       startingAmount: projected.startingAmount,
       monthlyContribution: projected.monthlyContribution,
       customRate: projected.customRate,
@@ -256,21 +311,21 @@ describe('live AI mode (mocked API)', () => {
     }));
     render(<App status={aiOn} chat={chat} />);
     await user.click(await screen.findByRole('button', { name: 'Ask Sunny' }));
+    expect(screen.getByRole('button', { name: 'Explain TFSA vs. RSP simply' })).toBeInTheDocument();
     await user.click(await screen.findByRole('button', { name: 'Compare 5-year savings & growth options' }, SLOW));
 
     expect(chat).toHaveBeenCalledTimes(1);
-    expect(await screen.findByText('Wealth & Savings Growth Calculator', {}, SLOW)).toBeInTheDocument();
+    const calculatorTitle = await screen.findByText('Wealth & Savings Growth Calculator', {}, SLOW);
+    expect(calculatorTitle).toBeInTheDocument();
+    const replyText = screen.getByText('Here is an illustrative comparison you can adjust.');
+    expect(replyText.compareDocumentPosition(calculatorTitle) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(within(replyText.closest('.msg')!).getByText('Wealth & Savings Growth Calculator')).toBeInTheDocument();
     expect(screen.getByRole('columnheader', { name: 'Ending Balance' })).toBeInTheDocument();
-    expect(screen.getByRole('rowheader', { name: 'Tangerine Savings Account' })).toBeInTheDocument();
-    expect(screen.getByRole('rowheader', { name: 'Tangerine TFSA Savings Account' })).toBeInTheDocument();
-    expect(screen.getByText(/Their lines overlap when their rates match/)).toBeInTheDocument();
-    const rate = screen.getByRole('spinbutton', { name: 'Custom Rate (%)' });
-    expect(rate).toHaveValue(null);
-    expect(screen.queryByRole('rowheader', { name: 'Illustrative Investment Fund / Custom Rate' })).not.toBeInTheDocument();
-    await user.type(rate, '0');
-    expect(screen.getByRole('rowheader', { name: 'Illustrative Investment Fund / Custom Rate' })).toBeInTheDocument();
-    await user.clear(rate);
-    expect(screen.queryByRole('rowheader', { name: 'Illustrative Investment Fund / Custom Rate' })).not.toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Key Trade-Off' })).toBeInTheDocument();
+    expect(screen.getByText('Accessible anytime; regular Savings interest may be taxable.')).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: 'Projected balances from year 0 to year 5' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Adjust custom rate (%)')).toBeDisabled();
+    expect(screen.getByText(/not a universal TFSA return/i)).toBeInTheDocument();
     const years = screen.getByRole('spinbutton', { name: 'Time Horizon (Years)' });
     expect(years).toHaveValue(5);
     await user.clear(years);
@@ -278,6 +333,67 @@ describe('live AI mode (mocked API)', () => {
     expect(screen.getByRole('img', { name: 'Projected balances from year 0 to year 10' })).toBeInTheDocument();
     expect(screen.getByText('Comparison at year 10')).toBeInTheDocument();
     expect(screen.getByText(/renewal beyond five years assumes the same 4\.05% rate/)).toBeInTheDocument();
+  }, 30000);
+
+  it('renders and updates the inline mortgage explorer with official Tangerine links', async () => {
+    const user = userEvent.setup();
+    const result = calculateMortgageScenario({
+      mode: 'payment',
+      homePrice: 500_000,
+      downPayment: 100_000,
+      annualRate: 4.79,
+      amortizationYears: 25,
+    });
+    expect(result.valid).toBe(true);
+    const scenario = {
+      mode: result.mode,
+      homePrice: result.homePrice,
+      mortgageAmount: result.mortgageAmount,
+      downPayment: result.downPayment,
+      annualIncome: result.annualIncome,
+      monthlyDebts: result.monthlyDebts,
+      annualRate: result.annualRate,
+      amortizationYears: result.amortizationYears,
+      paymentFrequency: result.paymentFrequency,
+      regularPayment: result.regularPayment,
+      monthlyPayment: result.monthlyPayment,
+      termYears: result.termYears,
+      totalPaymentsInTerm: result.totalPaymentsInTerm,
+      principalPaidInTerm: result.principalPaidInTerm,
+      interestPaidInTerm: result.interestPaidInTerm,
+      gdsMonthlyLimit: result.gdsMonthlyLimit,
+      tdsMonthlyLimit: result.tdsMonthlyLimit,
+      monthlyHousingPaymentLimit: result.monthlyHousingPaymentLimit,
+      maxMortgageAmount: result.maxMortgageAmount,
+      maxPurchasePrice: result.maxPurchasePrice,
+    };
+    const chat = vi.fn(async (): Promise<ChatResponse> => ({
+      reply: 'Here is an illustrative mortgage estimate.',
+      sourceIds: [],
+      suggestions: [],
+      effects: [{ type: 'mortgageScenario', ...scenario }],
+    }));
+    render(<App status={aiOn} chat={chat} />);
+    await user.click(await screen.findByRole('button', { name: 'Ask Sunny' }));
+    await user.type(screen.getByLabelText('Message Sunny'), 'Estimate a mortgage payment for a $500,000 home.{Enter}');
+    const title = await screen.findByText('Mortgage Explorer & Calculator', {}, SLOW);
+    const replyText = screen.getByText('Here is an illustrative mortgage estimate.');
+    expect(within(replyText.closest('.msg')!).getByText('Mortgage Explorer & Calculator')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Fixed rate' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Variable rate' })).toBeInTheDocument();
+    expect(screen.getByText('4.79%')).toBeInTheDocument();
+    expect(screen.getByText(/rate hold of up to 120 days/)).toBeInTheDocument();
+    expect(screen.getByText(/15 business days from application submission to funding/)).toBeInTheDocument();
+    expect(screen.getByRole('spinbutton', { name: 'Home Price ($)' })).toHaveValue(500_000);
+    expect(screen.getByRole('link', { name: 'Explore Tangerine Mortgages' })).toHaveAttribute('href', 'https://www.tangerine.ca/en/personal/borrow/mortgage');
+    for (const link of screen.getAllByRole('link', { name: /mortgage/i })) {
+      expect(link).toHaveAttribute('target', '_blank');
+      expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+    }
+    expect(title).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Affordability estimate' }));
+    expect(screen.getByRole('spinbutton', { name: 'Annual Income ($)' })).toBeInTheDocument();
+    expect(screen.getByText(/Uses 39% GDS \/ 44% TDS/)).toBeInTheDocument();
   }, 30000);
 
   it('keeps “Explore other topics” and fallback suggestions when the model returns none', async () => {

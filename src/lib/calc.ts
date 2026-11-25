@@ -178,11 +178,14 @@ export function projectWithoutReturns(input: ProjectionInput): ProjectionResult 
 }
 
 export const MAX_WEALTH_YEARS = 40;
+export const DEFAULT_WEALTH_YEARS = 5;
 
 export interface WealthComparisonInput {
   startingAmount: number;
   monthlyContribution: number;
   years: number;
+  /** Editable illustrative annual TFSA Savings rate in percentage points. */
+  tfsaSavingsRate?: number;
   /** Annual rate in percentage points; e.g. 5 means 5%. */
   customRate?: number | null;
 }
@@ -216,6 +219,7 @@ export interface WealthComparisonResult {
   startingAmount: number;
   monthlyContribution: number;
   years: number;
+  tfsaSavingsRate: number;
   customRate: number | null;
   totalContributions: number;
   options: WealthOptionSummary[];
@@ -232,6 +236,7 @@ export interface WealthComparisonResult {
  */
 export function projectWealthComparison(input: WealthComparisonInput): WealthComparisonResult {
   const customRate = input.customRate ?? null;
+  const tfsaSavingsRate = input.tfsaSavingsRate ?? 0.3;
   const errors: WealthComparisonResult['errors'] = {};
   if (!isValidAmount(input.startingAmount)) errors.startingAmount = 'Enter a starting amount between $0 and $10,000,000.';
   if (!isValidAmount(input.monthlyContribution)) errors.monthlyContribution = 'Enter a monthly contribution between $0 and $10,000,000.';
@@ -241,11 +246,15 @@ export function projectWealthComparison(input: WealthComparisonInput): WealthCom
   if (customRate !== null && (!Number.isFinite(customRate) || customRate < -99.99 || customRate > 100)) {
     errors.customRate = 'Enter an illustrative annual rate from -99.99% to 100%.';
   }
+  if (!Number.isFinite(tfsaSavingsRate) || tfsaSavingsRate < 0 || tfsaSavingsRate > 100) {
+    errors.tfsaSavingsRate = 'Enter a TFSA Savings annual-rate assumption from 0% to 100%.';
+  }
 
   const resultBase = {
     startingAmount: input.startingAmount,
     monthlyContribution: input.monthlyContribution,
     years: input.years,
+    tfsaSavingsRate,
     customRate,
     totalContributions: 0,
     options: [],
@@ -254,7 +263,6 @@ export function projectWealthComparison(input: WealthComparisonInput): WealthCom
   if (Object.keys(errors).length > 0) return { valid: false, errors, ...resultBase };
 
   const savingsRate = 0.3;
-  const tfsaSavingsRate = 0.3;
   const gicRate = input.years === 1 ? 3.6 : input.years === 3 ? 3.95 : 4.05;
   const monthlyRate = (annualRate: number) => annualRate / 100 / 12;
   let contributionsOnly = input.startingAmount;
@@ -326,6 +334,7 @@ export function projectWealthComparison(input: WealthComparisonInput): WealthCom
     startingAmount: input.startingAmount,
     monthlyContribution: input.monthlyContribution,
     years: input.years,
+    tfsaSavingsRate,
     customRate,
     totalContributions,
     yearlyBreakdown,
@@ -350,5 +359,162 @@ export function projectWealthComparison(input: WealthComparisonInput): WealthCom
         'Illustrative and not guaranteed; fund values fluctuate. No additional fees are deducted.',
       )]),
     ],
+  };
+}
+
+export type MortgageMode = 'payment' | 'affordability';
+export type MortgagePaymentFrequency = 'monthly' | 'biweekly';
+
+export interface MortgageScenarioInput {
+  mode: MortgageMode;
+  homePrice?: number;
+  mortgageAmount?: number;
+  downPayment?: number;
+  annualIncome?: number;
+  monthlyDebts?: number;
+  /** Annual nominal rate in percentage points, e.g. 4.79 means 4.79%. */
+  annualRate?: number;
+  amortizationYears?: number;
+  paymentFrequency?: MortgagePaymentFrequency;
+}
+
+export interface MortgageScenarioResult {
+  valid: boolean;
+  errors: Partial<Record<keyof MortgageScenarioInput, string>>;
+  mode: MortgageMode;
+  homePrice: number;
+  mortgageAmount: number;
+  downPayment: number;
+  annualIncome: number;
+  monthlyDebts: number;
+  annualRate: number;
+  amortizationYears: number;
+  paymentFrequency: MortgagePaymentFrequency;
+  regularPayment: number;
+  monthlyPayment: number;
+  termYears: 5;
+  totalPaymentsInTerm: number;
+  principalPaidInTerm: number;
+  interestPaidInTerm: number;
+  gdsMonthlyLimit: number;
+  tdsMonthlyLimit: number;
+  monthlyHousingPaymentLimit: number;
+  maxMortgageAmount: number;
+  maxPurchasePrice: number;
+}
+
+const DEFAULT_MORTGAGE_RATE = 4.79;
+const DEFAULT_AMORTIZATION_YEARS = 25;
+
+function mortgagePaymentFactor(annualRate: number, paymentsPerYear: number, amortizationYears: number): number {
+  const periodicRate = (1 + annualRate / 200) ** (2 / paymentsPerYear) - 1;
+  const periods = paymentsPerYear * amortizationYears;
+  if (periodicRate === 0) return 1 / periods;
+  return periodicRate / (1 - (1 + periodicRate) ** -periods);
+}
+
+/**
+ * Illustrative Canadian mortgage arithmetic using nominal rates compounded
+ * semi-annually. Affordability uses 39% GDS / 44% TDS without property-tax,
+ * heating, or condo-fee inputs; it is not a lender qualification result.
+ */
+export function calculateMortgageScenario(input: MortgageScenarioInput): MortgageScenarioResult {
+  const mode: MortgageMode = input.mode === 'affordability' ? 'affordability' : 'payment';
+  const annualRate = input.annualRate ?? DEFAULT_MORTGAGE_RATE;
+  const amortizationYears = input.amortizationYears ?? DEFAULT_AMORTIZATION_YEARS;
+  const paymentFrequency = input.paymentFrequency ?? 'monthly';
+  const paymentsPerYear = paymentFrequency === 'biweekly' ? 26 : 12;
+  const downPayment = input.downPayment ?? 0;
+  const annualIncome = input.annualIncome ?? 0;
+  const monthlyDebts = input.monthlyDebts ?? 0;
+  const derivedMortgageAmount = Math.max(0, (input.homePrice ?? 0) - downPayment);
+  const mortgageAmount = input.mortgageAmount ?? derivedMortgageAmount;
+  const homePrice = input.homePrice ?? mortgageAmount + downPayment;
+  const errors: MortgageScenarioResult['errors'] = {};
+
+  if (input.mode !== 'payment' && input.mode !== 'affordability') errors.mode = 'Choose payment or affordability mode.';
+  if (!isValidAmount(homePrice)) errors.homePrice = 'Enter a home price from $0 to $10,000,000.';
+  if (!isValidAmount(mortgageAmount)) errors.mortgageAmount = 'Enter a mortgage amount from $0 to $10,000,000.';
+  if (
+    mode === 'payment' &&
+    input.homePrice !== undefined &&
+    input.mortgageAmount !== undefined &&
+    Math.abs(mortgageAmount - derivedMortgageAmount) > 0.01
+  ) {
+    errors.mortgageAmount = 'The mortgage amount must equal the home price minus the down payment.';
+  }
+  if (!isValidAmount(downPayment) || (mode === 'payment' && downPayment > homePrice)) {
+    errors.downPayment = mode === 'payment'
+      ? 'Enter a down payment between $0 and the home price.'
+      : 'Enter a down payment from $0 to $10,000,000.';
+  }
+  if (!isValidAmount(annualIncome)) errors.annualIncome = 'Enter annual income from $0 to $10,000,000.';
+  if (!isValidAmount(monthlyDebts)) errors.monthlyDebts = 'Enter monthly debts from $0 to $10,000,000.';
+  if (!Number.isFinite(annualRate) || annualRate < 0 || annualRate > 100) errors.annualRate = 'Enter an annual rate from 0% to 100%.';
+  if (!Number.isInteger(amortizationYears) || amortizationYears < 1 || amortizationYears > 40) errors.amortizationYears = 'Enter an amortization from 1 to 40 whole years.';
+  if (paymentFrequency !== 'monthly' && paymentFrequency !== 'biweekly') errors.paymentFrequency = 'Choose monthly or biweekly payments.';
+
+  const result = {
+    mode,
+    homePrice,
+    mortgageAmount,
+    downPayment,
+    annualIncome,
+    monthlyDebts,
+    annualRate,
+    amortizationYears,
+    paymentFrequency,
+    regularPayment: 0,
+    monthlyPayment: 0,
+    termYears: 5 as const,
+    totalPaymentsInTerm: 0,
+    principalPaidInTerm: 0,
+    interestPaidInTerm: 0,
+    gdsMonthlyLimit: 0,
+    tdsMonthlyLimit: 0,
+    monthlyHousingPaymentLimit: 0,
+    maxMortgageAmount: 0,
+    maxPurchasePrice: 0,
+  };
+  if (Object.keys(errors).length) return { valid: false, errors, ...result };
+
+  const paymentFactor = mortgagePaymentFactor(annualRate, paymentsPerYear, amortizationYears);
+  const regularPayment = roundCents(mortgageAmount * paymentFactor);
+  const monthlyPayment = roundCents(regularPayment * paymentsPerYear / 12);
+  const periodicRate = (1 + annualRate / 200) ** (2 / paymentsPerYear) - 1;
+  const termPeriods = Math.min(5 * paymentsPerYear, amortizationYears * paymentsPerYear);
+  let remainingBalance = mortgageAmount;
+  let totalPaymentsInTerm = 0;
+  let interestPaidInTerm = 0;
+  for (let period = 0; period < termPeriods && remainingBalance > 0; period += 1) {
+    const interest = remainingBalance * periodicRate;
+    const payment = Math.min(regularPayment, remainingBalance + interest);
+    const principal = Math.min(remainingBalance, Math.max(0, payment - interest));
+    totalPaymentsInTerm += payment;
+    interestPaidInTerm += payment - principal;
+    remainingBalance = Math.max(0, remainingBalance - principal);
+  }
+  const principalPaidInTerm = roundCents(mortgageAmount - remainingBalance);
+  const gdsMonthlyLimit = roundCents(annualIncome * 0.39 / 12);
+  const tdsMonthlyLimit = roundCents(Math.max(0, annualIncome * 0.44 / 12 - monthlyDebts));
+  const monthlyHousingPaymentLimit = Math.min(gdsMonthlyLimit, tdsMonthlyLimit);
+  const maxMortgageAmount = roundCents(monthlyHousingPaymentLimit / mortgagePaymentFactor(annualRate, 12, amortizationYears));
+  const maxPurchasePrice = roundCents(maxMortgageAmount + downPayment);
+  const affordabilityPayment = mode === 'affordability' ? monthlyHousingPaymentLimit : monthlyPayment;
+
+  return {
+    valid: true,
+    errors,
+    ...result,
+    regularPayment,
+    monthlyPayment: affordabilityPayment,
+    totalPaymentsInTerm: roundCents(totalPaymentsInTerm),
+    principalPaidInTerm,
+    interestPaidInTerm: roundCents(interestPaidInTerm),
+    gdsMonthlyLimit,
+    tdsMonthlyLimit,
+    monthlyHousingPaymentLimit,
+    maxMortgageAmount,
+    maxPurchasePrice,
   };
 }

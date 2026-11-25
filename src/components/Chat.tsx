@@ -9,7 +9,7 @@ import type { Purpose } from '../domain/allocations';
 import { isValidAmount, isValidMonths, MAX_MONTHS, parseAmount } from '../lib/calc';
 import { LIMITS } from '../shared/api';
 import { SUPPORT_LINKS } from '../shared/offerings';
-import { AllocationCard, EducationCard, FactsUpdatedCard, OfferingsCard, ScenarioCard, SignupCard, SignalCard, SourceList, SupportChannelsCard, WealthComparisonCard } from './Cards';
+import { AllocationCard, EducationCard, FactsUpdatedCard, MortgageCalculatorCard, OfferingsCard, ScenarioCard, SignupCard, SignalCard, SourceList, SupportChannelsCard, WealthComparisonCard } from './Cards';
 import { PlanPanel } from './PlanPanel';
 import { RichText } from './RichText';
 import { SunnyOrb } from './SunnyOrb';
@@ -275,6 +275,7 @@ function MessageRow({
           <ScenarioCard input={card.input} hypothetical={card.hypothetical} outdated={JSON.stringify(card.input) !== currentScenario} />
         )}
         {card?.kind === 'wealthComparison' && <WealthComparisonCard comparison={card.comparison} />}
+        {card?.kind === 'mortgageScenario' && <MortgageCalculatorCard scenario={card.scenario} />}
         {card?.kind === 'factsUpdated' && <FactsUpdatedCard changes={card.changes} />}
         {card?.kind === 'action' && (
           <>

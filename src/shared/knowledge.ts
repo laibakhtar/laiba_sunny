@@ -18,6 +18,7 @@ export const REVIEW_DATE = '2026-10-21';
 /** Wealth-use-case sources added and checked on this date. */
 export const REVIEW_DATE_WEALTH = '2026-10-24';
 export const REVIEW_DATE_LATEST = '2026-11-19';
+export const REVIEW_DATE_EDUCATION = '2026-11-20';
 
 export interface KnowledgeEntry {
   id: string;
@@ -29,8 +30,9 @@ export interface KnowledgeEntry {
   url: string;
   /** Date the team actually retrieved and checked the page. */
   reviewed: string;
-  /** 'tangerine' = describes a Tangerine offering/resource; 'general' = general education. */
-  kind: 'tangerine' | 'general';
+  /** Tangerine is first-party product education; government is external statutory guidance. */
+  kind: 'tangerine' | 'government';
+  resources?: { label: string; url: string }[];
   conditions: string[];
   /** What the source does not answer. Sunny must not fill these gaps by inference. */
   openQuestions: string[];
@@ -43,7 +45,7 @@ const FCAC = 'Financial Consumer Agency of Canada';
 const CDIC = 'Canada Deposit Insurance Corporation';
 
 const BASE_KNOWLEDGE: KnowledgeEntry[] = [
-  // ---------------------------------------------------------------- general
+  // ---------------------------------------------------------- government
   {
     id: 'gov-fhsa-overview',
     topic: 'What an FHSA is',
@@ -53,7 +55,7 @@ const BASE_KNOWLEDGE: KnowledgeEntry[] = [
     pageTitle: 'First Home Savings Account (FHSA)',
     url: 'https://www.canada.ca/en/revenue-agency/services/tax/individuals/topics/first-home-savings-account.html',
     reviewed: REVIEW_DATE,
-    kind: 'general',
+    kind: 'government',
     conditions: ['Contribution limits and other CRA rules apply.', 'Some investments held in an FHSA can trigger taxes.'],
     openQuestions: ['Which financial institutions offer an FHSA is not covered by this source.'],
     keywords: ['fhsa', 'first home savings account', 'tax', 'deductible', 'registered', 'first home'],
@@ -67,7 +69,7 @@ const BASE_KNOWLEDGE: KnowledgeEntry[] = [
     pageTitle: 'Opening your FHSAs',
     url: 'https://www.canada.ca/en/revenue-agency/services/tax/individuals/topics/first-home-savings-account/opening-your-fhsas.html',
     reviewed: REVIEW_DATE,
-    kind: 'general',
+    kind: 'government',
     conditions: ['All conditions must be met when the account is opened.'],
     openQuestions: ['Sunny cannot confirm whether a particular customer is eligible.'],
     keywords: ['eligible', 'eligibility', 'open', 'first-time', 'qualify', 'age', 'resident', 'fhsa'],
@@ -81,7 +83,7 @@ const BASE_KNOWLEDGE: KnowledgeEntry[] = [
     pageTitle: 'Investments in your FHSAs',
     url: 'https://www.canada.ca/en/revenue-agency/services/tax/individuals/topics/first-home-savings-account/investments-your-fhsa.html',
     reviewed: REVIEW_DATE,
-    kind: 'general',
+    kind: 'government',
     conditions: ['Risk depends on what is held inside the account, not on the account type.'],
     openQuestions: ['Which holdings a specific institution offers inside an FHSA.'],
     keywords: ['investment', 'hold', 'gic', 'cash', 'mutual fund', 'stocks', 'is an fhsa an investment', 'inside', 'lose'],
@@ -95,7 +97,7 @@ const BASE_KNOWLEDGE: KnowledgeEntry[] = [
     pageTitle: 'Withdrawals and transfers out of your FHSAs',
     url: 'https://www.canada.ca/en/revenue-agency/services/tax/individuals/topics/first-home-savings-account/withdrawals-transfers-out-your-fhsas.html',
     reviewed: REVIEW_DATE,
-    kind: 'general',
+    kind: 'government',
     conditions: ['A form must be submitted to the FHSA issuer for a qualifying withdrawal.'],
     openQuestions: ['Processing times or withdrawal mechanics at any specific institution.'],
     keywords: ['withdraw', 'withdrawal', 'take money out', 'access', 'taxable', 'qualifying'],
@@ -104,12 +106,12 @@ const BASE_KNOWLEDGE: KnowledgeEntry[] = [
     id: 'gov-tfsa',
     topic: 'What a TFSA is',
     content:
-      'A Tax-Free Savings Account (TFSA) is a registered account that can hold cash savings or investments. Contributions are not tax-deductible, but income earned inside it (interest, dividends, capital gains) is generally tax-free, including when withdrawn. Access depends on the underlying product: a GIC may be locked until maturity. Withdrawals affect contribution room.',
+      'A Tax-Free Savings Account (TFSA) is a registered account that can hold cash savings or investments. Contributions are not tax-deductible, but income earned inside it (interest, dividends, capital gains) is generally tax-free, including when withdrawn. You can withdraw at any time, for any reason, and withdrawals affect contribution room.',
     publisher: CRA,
     pageTitle: 'What is a TFSA',
     url: 'https://www.canada.ca/en/revenue-agency/services/tax/individuals/topics/tax-free-savings-account/what.html',
     reviewed: REVIEW_DATE,
-    kind: 'general',
+    kind: 'government',
     conditions: ['Contribution room rules apply; over-contributing has tax consequences.'],
     openQuestions: [],
     keywords: ['tfsa', 'tax-free savings account', 'tax free', 'flexible', 'withdraw', 'difference'],
@@ -123,7 +125,7 @@ const BASE_KNOWLEDGE: KnowledgeEntry[] = [
     pageTitle: "The Home Buyers' Plan",
     url: 'https://www.canada.ca/en/revenue-agency/services/tax/individuals/topics/rrsps-related-plans/what-home-buyers-plan.html',
     reviewed: REVIEW_DATE,
-    kind: 'general',
+    kind: 'government',
     conditions: ['Repayment rules apply; temporary relief changes when repayment starts for some withdrawals.'],
     openQuestions: ['Current withdrawal limit should be checked on the CRA page.'],
     keywords: ['hbp', 'home buyers plan', 'rrsp', 'rsp', 'retirement'],
@@ -137,7 +139,7 @@ const BASE_KNOWLEDGE: KnowledgeEntry[] = [
     pageTitle: 'How much you need for a down payment',
     url: 'https://www.canada.ca/en/financial-consumer-agency/services/mortgages/down-payment.html',
     reviewed: REVIEW_DATE,
-    kind: 'general',
+    kind: 'government',
     conditions: ['These are minimums, not a recommendation; closing costs are extra.', 'Rules can change; check the FCAC page.'],
     openQuestions: ['What a specific customer can afford or qualify for.'],
     keywords: ['down payment', 'how much', 'need', 'minimum', 'mortgage insurance', '20%', 'target'],
@@ -151,7 +153,7 @@ const BASE_KNOWLEDGE: KnowledgeEntry[] = [
     pageTitle: 'Buying a home',
     url: 'https://www.canada.ca/en/financial-consumer-agency/services/buying-home.html',
     reviewed: REVIEW_DATE,
-    kind: 'general',
+    kind: 'government',
     conditions: ['General guidance, not a recommendation for an individual.'],
     openQuestions: [],
     keywords: ['timeline', 'short-term', 'accessible', 'closing costs', 'automatic', 'budget', 'start', 'where to start'],
@@ -165,7 +167,7 @@ const BASE_KNOWLEDGE: KnowledgeEntry[] = [
     pageTitle: 'Preparing to get a mortgage',
     url: 'https://www.canada.ca/en/financial-consumer-agency/services/mortgages/preparing-mortgage.html',
     reviewed: REVIEW_DATE,
-    kind: 'general',
+    kind: 'government',
     conditions: ['Lenders apply qualification tests; Sunny does not assess mortgage affordability.'],
     openQuestions: [],
     keywords: ['mortgage', 'lender', 'prepare', 'credit', 'preapproval', 'documents', 'affordability'],
@@ -179,7 +181,7 @@ const BASE_KNOWLEDGE: KnowledgeEntry[] = [
     pageTitle: 'Limiting future debt',
     url: 'https://www.canada.ca/en/financial-consumer-agency/services/debt/limiting-debt.html',
     reviewed: REVIEW_DATE,
-    kind: 'general',
+    kind: 'government',
     conditions: ['How much to keep aside is the customer’s decision.'],
     openQuestions: ['The source does not explain keeping emergency money in a separate account.'],
     keywords: ['emergency', 'emergencies', 'unexpected', 'reserve', 'rainy day'],
@@ -193,7 +195,7 @@ const BASE_KNOWLEDGE: KnowledgeEntry[] = [
     pageTitle: 'What’s covered',
     url: 'https://www.cdic.ca/your-coverage/whats-covered/',
     reviewed: REVIEW_DATE,
-    kind: 'general',
+    kind: 'government',
     conditions: ['Coverage applies only at CDIC member institutions and to eligible deposits.'],
     openQuestions: ['Whether a specific Tangerine product is an eligible deposit is not stated on the Tangerine pages reviewed; describe the general CDIC rule and suggest confirming with Tangerine or CDIC.'],
     keywords: ['lose money', 'safe', 'risk', 'insured', 'cdic', 'protected', 'guaranteed', 'mutual fund'],
@@ -207,7 +209,7 @@ const BASE_KNOWLEDGE: KnowledgeEntry[] = [
     pageTitle: 'Guaranteed Investment Certificates (GICs)',
     url: 'https://cdic.ca/?p=116',
     reviewed: REVIEW_DATE,
-    kind: 'general',
+    kind: 'government',
     conditions: ['Terms and redemption rules vary by issuer and product.'],
     openQuestions: [],
     keywords: ['gic', 'guaranteed investment certificate', 'term', 'term deposit'],
@@ -222,7 +224,7 @@ const BASE_KNOWLEDGE: KnowledgeEntry[] = [
     pageTitle: 'Setting savings and investment goals',
     url: 'https://www.canada.ca/en/financial-consumer-agency/services/savings-investments/savings-investment-goals.html',
     reviewed: REVIEW_DATE_WEALTH,
-    kind: 'general',
+    kind: 'government',
     conditions: ['General guidance, not a recommendation for an individual.'],
     openQuestions: [],
     keywords: ['saving', 'investing', 'risk', 'return', 'time horizon', 'horizon', 'next year', 'long term', 'short term', 'lose money', 'debt', 'inflation', 'risk tolerance', 'build wealth'],
@@ -236,7 +238,7 @@ const BASE_KNOWLEDGE: KnowledgeEntry[] = [
     pageTitle: 'Basics of investing',
     url: 'https://www.canada.ca/en/financial-consumer-agency/services/savings-investments/investing-basics.html',
     reviewed: REVIEW_DATE_WEALTH,
-    kind: 'general',
+    kind: 'government',
     conditions: [],
     openQuestions: [],
     keywords: ['fees', 'costs', 'before investing', 'how investing works', 'factors', 'not ready', 'decide'],
@@ -250,7 +252,7 @@ const BASE_KNOWLEDGE: KnowledgeEntry[] = [
     pageTitle: 'Guaranteed investment certificates and term deposits: know your rights',
     url: 'https://www.canada.ca/en/financial-consumer-agency/services/rights-responsibilities/rights-investing/rights-guaranteed-investment-certificates.html',
     reviewed: REVIEW_DATE_WEALTH,
-    kind: 'general',
+    kind: 'government',
     conditions: [],
     openQuestions: [],
     keywords: ['gic', 'term', 'cash in', 'early', 'principal', 'need the money', 'next year'],
@@ -264,7 +266,7 @@ const BASE_KNOWLEDGE: KnowledgeEntry[] = [
     pageTitle: 'Registered Retirement Savings Plan (RRSP)',
     url: 'https://www.canada.ca/en/revenue-agency/services/tax/individuals/topics/rrsps-related-plans/registered-retirement-savings-plan-rrsp.html',
     reviewed: REVIEW_DATE_WEALTH,
-    kind: 'general',
+    kind: 'government',
     conditions: ['Contribution limits and rules apply.'],
     openQuestions: ['The page does not list what investments an RRSP can hold.'],
     keywords: ['rrsp', 'rsp', 'retirement', 'tax deductible', 'difference', 'tfsa vs rrsp'],
@@ -281,7 +283,7 @@ const BASE_KNOWLEDGE: KnowledgeEntry[] = [
     url: 'https://www.tangerine.ca/en/personal/save/savings-account',
     reviewed: REVIEW_DATE,
     kind: 'tangerine',
-    conditions: ['Opening an interest-earning account online requires a SIN.'],
+    conditions: ['A fee applies to transfers to another financial institution (see Tangerine’s fee schedule).', 'Opening an interest-earning account online requires a SIN.'],
     openQuestions: ['Current interest rates (intentionally not stored; promotional rates change).'],
     keywords: ['tangerine', 'savings account', 'automatic savings', 'savings goals', 'separate', 'no fee', 'help'],
   },
@@ -289,7 +291,7 @@ const BASE_KNOWLEDGE: KnowledgeEntry[] = [
     id: 'tng-tfsa-options',
     topic: 'TFSA options at Tangerine',
     content:
-      'Tangerine offers three ways to hold a TFSA: a TFSA Savings Account (tax-free interest with the features of a Tangerine Savings Account), a Tax-Free Guaranteed Investment (a GIC held in a TFSA), and a Tax-Free Investment Fund Account (Tangerine investment funds held in a TFSA). Registered accounts have no fees while funds stay with Tangerine.',
+      'Tangerine offers three ways to hold a TFSA: a TFSA Savings Account (tax-free interest with the features of a Tangerine Savings Account and generally flexible access), a Tax-Free Guaranteed Investment (a GIC held in a TFSA, generally locked until maturity), and a Tax-Free Investment Fund Account (Tangerine investment funds held in a TFSA, whose value can fluctuate). Registered accounts have no fees while funds stay with Tangerine.',
     publisher: T,
     pageTitle: 'TFSAs',
     url: 'https://www.tangerine.ca/en/personal/invest/tfsa',
@@ -479,6 +481,11 @@ const BASE_KNOWLEDGE: KnowledgeEntry[] = [
     publisher: T,
     pageTitle: 'Mortgages: Fixed & Variable Mortgage Loans',
     url: 'https://www.tangerine.ca/en/personal/borrow/mortgage',
+    resources: [
+      { label: 'Mortgage Payment Calculator', url: 'https://www.tangerine.ca/en/personal/borrow/mortgage/mortgage-payment-calculator' },
+      { label: 'Mortgage Affordability Calculator', url: 'https://www.tangerine.ca/en/personal/borrow/mortgage/mortgage-affordability-calculator' },
+      { label: 'Mortgage Rates', url: 'https://www.tangerine.ca/en/rates/mortgage-rates' },
+    ],
     reviewed: REVIEW_DATE,
     kind: 'tangerine',
     conditions: ['Approval is subject to Tangerine’s review; Sunny cannot assess qualification.'],
@@ -526,6 +533,135 @@ const BASE_KNOWLEDGE: KnowledgeEntry[] = [
     conditions: [],
     openQuestions: [],
     keywords: ['tangerine', 'scotiabank', 'cdic', 'about', 'what can tangerine', 'offer'],
+  },
+  {
+    id: 'tng-edu-compound-interest',
+    topic: 'Simple and compound interest',
+    content:
+      'Simple interest is calculated only on the original amount saved; compound interest is interest on that amount plus interest already kept in the account. For example, with a hypothetical $100 balance that earns $1 and keeps it, a later interest calculation can include $101; if the interest is withdrawn, it continues to be based on the original $100. Tangerine explains that its Savings Account interest is calculated daily and paid monthly, while GIC interest frequency depends on the term: terms of one year or longer may be compounded and/or paid annually, and shorter terms are generally paid at maturity. The rate and timing depend on the product and can change where the rate is variable.',
+    publisher: T,
+    pageTitle: 'Understand compound interest in 60 seconds',
+    url: 'https://www.tangerine.ca/en/thejuice/save/understand-compound-interest-in-60-seconds-video',
+    resources: [
+      { label: 'Tangerine Savings Account', url: 'https://www.tangerine.ca/en/personal/save/savings-account' },
+      { label: 'Tangerine GICs', url: 'https://www.tangerine.ca/en/personal/invest/guaranteed-investments' },
+    ],
+    reviewed: REVIEW_DATE_EDUCATION,
+    kind: 'tangerine',
+    conditions: ['The $100 example is illustrative only; actual interest depends on the balance, rate, timing and product terms.'],
+    openQuestions: ['Current savings and GIC rates are not stored here; check Tangerine’s live rate pages.'],
+    keywords: ['compound interest', 'simple interest', 'interest on interest', 'calculated daily', 'paid monthly', 'gic interest', 'how interest works'],
+  },
+  {
+    id: 'tng-edu-tfsa-vs-rrsp',
+    topic: 'TFSA vs. RSP/RRSP',
+    content:
+      'A TFSA and an RSP/RRSP are registered account types with different tax treatment, not investments by themselves. A TFSA can hold savings or investments whose growth and withdrawals are generally tax-free; an RSP/RRSP is usually aimed at retirement, contributions may be deductible, and withdrawals are generally taxable, with Tangerine noting tax withheld on RSP withdrawals. Tangerine’s educational comparison describes a TFSA as flexible for short-, medium- or long-term goals and an RSP as retirement-focused. For example, the same $100 contribution can have different tax treatment depending on which account holds it; the example does not calculate anyone’s tax outcome.',
+    publisher: T,
+    pageTitle: 'RSP vs TFSA: Understand the difference',
+    url: 'https://www.tangerine.ca/en/thejuice/invest/rsp-vs-tfsa-understand-the-difference',
+    resources: [
+      { label: 'Tangerine TFSA options', url: 'https://www.tangerine.ca/en/personal/invest/tfsa' },
+      { label: 'Tangerine RSP options', url: 'https://www.tangerine.ca/en/personal/invest/rsp' },
+    ],
+    reviewed: REVIEW_DATE_EDUCATION,
+    kind: 'tangerine',
+    conditions: ['This is general education, not personalized tax advice.'],
+    openQuestions: ['Current contribution limits, eligibility and detailed tax rules should be checked with the CRA.'],
+    keywords: ['tfsa', 'rsp', 'rrsp', 'tfsa vs rrsp', 'tfsa vs rsp', 'difference between tfsa and rrsp', 'difference between tfsa and rsp', 'tfsa contribution room', 'tax-free', 'tax deductible', 'retirement account', 'withholding tax'],
+  },
+  {
+    id: 'tng-edu-container-vs-holdings',
+    topic: 'Registered accounts as containers and their holdings',
+    content:
+      'A TFSA or RSP/RRSP is like a container that provides a particular tax treatment; it is not an investment on its own. Savings, GICs and Investment Funds are examples of holdings that can go inside an account, subject to what the institution offers. For example, two people can each have a TFSA but hold different things: accessible savings in one and a term GIC in the other, so their risk and access differ. Tangerine’s beginner guide uses this container-and-product distinction to explain investing.',
+    publisher: T,
+    pageTitle: 'A beginner’s guide to investing',
+    url: 'https://www.tangerine.ca/en/thejuice/invest/a-beginners-guide-to-investing',
+    resources: [
+      { label: 'Tangerine TFSA options', url: 'https://www.tangerine.ca/en/personal/invest/tfsa' },
+      { label: 'Tangerine RSP options', url: 'https://www.tangerine.ca/en/personal/invest/rsp' },
+    ],
+    reviewed: REVIEW_DATE_EDUCATION,
+    kind: 'tangerine',
+    conditions: ['Available holdings depend on the account and products offered by the institution.'],
+    openQuestions: ['The container alone does not determine the risk or liquidity of a specific holding.'],
+    keywords: ['container', 'holdings', 'what is inside a tfsa', 'tfsa an investment', 'rsp an investment', 'account vs investment', 'investment product', 'risk and access'],
+  },
+  {
+    id: 'tng-edu-mer-and-fees',
+    topic: 'MER, management fees and administration fees',
+    content:
+      'A Management Expense Ratio (MER) is an annual percentage that summarizes ongoing costs embedded in a mutual fund, so those costs reduce the return shown by the fund rather than arriving as a separate monthly account bill. Management fees support managing and operating a fund; an administration fee is another fund cost, and Tangerine lists management and administration fees for its Investment Funds. For a simplified example, a 1% annual cost on an unchanged $1,000 balance is about $10 for a year; actual balances and costs vary. A $0 monthly fee on a Savings or Chequing Account does not mean an Investment Fund has no embedded costs.',
+    publisher: T,
+    pageTitle: 'What does Total Cost Reporting mean for my investments?',
+    url: 'https://www.tangerine.ca/en/thejuice/invest/total-cost-reporting-explained',
+    resources: [
+      { label: 'Management fee vs. MER', url: 'https://www.tangerine.ca/en/thejuice/invest/management-fee-vs-mer' },
+      { label: 'Tangerine Investment Funds and fees', url: 'https://www.tangerine.ca/en/personal/invest/mutual-funds' },
+      { label: 'Tangerine Savings Account', url: 'https://www.tangerine.ca/en/personal/save/savings-account' },
+    ],
+    reviewed: REVIEW_DATE_EDUCATION,
+    kind: 'tangerine',
+    conditions: ['The $1,000 example is simplified and illustrative; fund expenses and account fees vary by product and can change.'],
+    openQuestions: ['Check the current fund documents for the specific fees and total costs of a fund.'],
+    keywords: ['mer', 'management expense ratio', 'management fee', 'administration fee', 'admin fee', 'fund fees', 'investment costs', 'account fee', 'fees'],
+  },
+  {
+    id: 'tng-edu-fixed-vs-variable',
+    topic: 'Fixed and variable interest rates',
+    content:
+      'A fixed rate stays set for its agreed term, which can make interest more predictable; a variable rate can move as market or benchmark rates change. Tangerine describes its GIC rates as fixed for the chosen term, its Savings Account rate as subject to change, and its closed mortgages as available with fixed or variable rates. For example, a hypothetical $1,000 fixed-rate GIC keeps its agreed rate during its term, while a savings rate may change; a mortgage’s exact payment effects depend on its contract. Compare the rate, term, access and product conditions rather than treating one rate type as universally better.',
+    publisher: T,
+    pageTitle: 'What the Bank of Canada’s interest rate changes mean for your money',
+    url: 'https://www.tangerine.ca/en/thejuice/borrow/what-the-bank-of-canada-s-interest-rate-changes-mean-for-your-money',
+    resources: [
+      { label: 'Tangerine Mortgages', url: 'https://www.tangerine.ca/en/personal/borrow/mortgage' },
+      { label: 'Tangerine GICs', url: 'https://www.tangerine.ca/en/personal/invest/guaranteed-investments' },
+      { label: 'Tangerine Savings Account', url: 'https://www.tangerine.ca/en/personal/save/savings-account' },
+    ],
+    reviewed: REVIEW_DATE_EDUCATION,
+    kind: 'tangerine',
+    conditions: ['The $1,000 example is hypothetical; rates, terms and mortgage payment behaviour depend on the current product agreement.'],
+    openQuestions: ['Current posted rates and individualized mortgage terms must be checked with Tangerine.'],
+    keywords: ['fixed vs variable', 'fixed rate', 'variable rate', 'interest rate changes', 'mortgage rate', 'gic rate', 'savings rate'],
+  },
+  {
+    id: 'tng-edu-credit-basics',
+    topic: 'Credit-card fees, rewards and payments',
+    content:
+      'An annual fee is the yearly charge for a card; cash back or Scene+ points are rewards earned under that card’s terms; and the purchase interest rate is the rate used when purchase balances are not paid as required. Tangerine’s Money-Back card page explains that new purchases can avoid interest when the full statement balance is paid by the due date, while cash advances do not receive that grace period. The statement balance is the full amount shown for that billing period; the minimum payment is the smaller required amount shown on the statement, and paying only that amount can leave a balance that accrues interest. For example, if a statement shows $100 due and only the lower minimum is paid, the remaining balance is still owed.',
+    publisher: T,
+    pageTitle: 'Money-Back Credit Card: Fees & Interest',
+    url: 'https://www.tangerine.ca/en/personal/spend/credit-cards/money-back-credit-card',
+    resources: [
+      { label: 'Tangerine Help Centre', url: 'https://www.tangerine.ca/en/help-centre' },
+      { label: 'Tangerine credit-card education', url: 'https://www.tangerine.ca/en/thejuice/spend/how-to-maximize-cash-back-credit-card' },
+      { label: 'Tangerine Rewards World Elite Mastercard', url: 'https://www.tangerine.ca/en/personal/spend/credit-cards/world-elite-mastercard' },
+    ],
+    reviewed: REVIEW_DATE_EDUCATION,
+    kind: 'tangerine',
+    conditions: ['The $100 example is illustrative. Paying less than the full statement balance may lead to interest under the card agreement.'],
+    openQuestions: ['Minimum-payment formulas, due dates and current rates are specific to the card agreement and statement; check the current disclosure.'],
+    keywords: ['annual fee', 'cash back', 'cashback', 'scene+', 'purchase interest', 'grace period', 'statement balance', 'minimum payment', 'credit card interest', 'credit card payment'],
+  },
+  {
+    id: 'tng-edu-emergency-fund',
+    topic: 'Emergency funds and accessible savings',
+    content:
+      'An emergency fund is money set aside for unexpected costs such as repairs, urgent travel or an interruption in income. Keeping it somewhere accessible can help avoid relying on debt or needing to sell or withdraw a longer-term investment at the wrong time. Tangerine’s education describes using a separate, easy-to-access Savings Account to track emergency money apart from day-to-day chequing. For example, setting aside $100 for an unexpected repair makes it easier to see what is reserved instead of mixing it with everyday spending.',
+    publisher: T,
+    pageTitle: 'How to build an emergency fund',
+    url: 'https://www.tangerine.ca/en/thejuice/save/how-to-build-an-emergency-fund-during-a-time-of-high-inflation',
+    resources: [
+      { label: 'Tangerine Savings Account', url: 'https://www.tangerine.ca/en/personal/save/savings-account' },
+      { label: 'Chequing vs. savings accounts', url: 'https://www.tangerine.ca/en/thejuice/save/chequing-vs-savings-accounts-your-questions-answered' },
+    ],
+    reviewed: REVIEW_DATE_EDUCATION,
+    kind: 'tangerine',
+    conditions: ['An emergency fund is an individual choice; no single target amount fits everyone.'],
+    openQuestions: ['The education article’s suggested savings targets are general guidelines, not a personalized requirement.'],
+    keywords: ['emergency fund', 'emergency savings', 'rainy day', 'unexpected expense', 'liquid', 'accessible savings', 'separate account', 'chequing'],
   },
 ];
 
@@ -595,10 +731,10 @@ export function validateSourceIds(ids: unknown): string[] {
   return out.slice(0, 4);
 }
 
-/** Simple keyword retrieval: score entries by keyword and topic-word overlap with the query. */
-export function retrieve(query: string, k = 6, always: string[] = [], includeGeneral = true): KnowledgeEntry[] {
+/** Rank Tangerine entries first; government guidance is included only by request. */
+export function retrieve(query: string, k = 6, always: string[] = [], includeGovernment = false): KnowledgeEntry[] {
   const q = ` ${query.toLowerCase().replace(/[^a-z0-9%$ ]+/g, ' ')} `;
-  const scored = KNOWLEDGE.filter((e) => includeGeneral || e.kind === 'tangerine').map((e) => {
+  const scored = KNOWLEDGE.filter((e) => includeGovernment || e.kind !== 'government').map((e) => {
     let score = 0;
     for (const kw of e.keywords) if (q.includes(` ${kw}`) || q.includes(kw)) score += kw.includes(' ') ? 3 : 2;
     for (const w of e.topic.toLowerCase().split(/\W+/)) if (w.length > 3 && q.includes(` ${w}`)) score += 1;
@@ -606,9 +742,18 @@ export function retrieve(query: string, k = 6, always: string[] = [], includeGen
     if (score > 0 && e.kind === 'tangerine') score += 2;
     return { e, score };
   });
-  return scored
+  const ranked = scored
     .filter((s) => s.score > 0)
     .sort((a, b) => b.score - a.score)
-    .slice(0, k)
     .map((s) => s.e);
+  if (!includeGovernment) return ranked.slice(0, k);
+
+  const tangerine = ranked.filter((entry) => entry.kind === 'tangerine');
+  const government = ranked.filter((entry) => entry.kind === 'government');
+  if (k <= 1) return (tangerine.length ? tangerine : government).slice(0, k);
+  const governmentSlots = Math.min(government.length, Math.max(1, Math.floor(k / 3)));
+  return [
+    ...tangerine.slice(0, k - governmentSlots),
+    ...government.slice(0, governmentSlots),
+  ];
 }

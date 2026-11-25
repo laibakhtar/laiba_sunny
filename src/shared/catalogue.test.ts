@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { CATALOGUE_REFERENCE_SOURCES, offerIsCurrentAsOf, TANGERINE_CATALOGUE, TANGERINE_OFFERS } from './catalogue';
 import { getEntry, retrieve } from './knowledge';
-import { eligiblePromotionIds, initialOfferingIds, namedOfferingIds, OFFERINGS, offeringPlan, offeringReasons, offeringsFor, validateOfferingIds } from './offerings';
+import { eligiblePromotionIds, getOffering, initialOfferingIds, namedOfferingIds, OFFERINGS, offeringPlan, offeringReasons, offeringUrl, offeringsFor, SIGNUP_PRODUCT_IDS, validateOfferingIds } from './offerings';
 
 describe('Tangerine product catalogue', () => {
   it('covers the major personal product families with unique ids and official sources', () => {
@@ -112,10 +112,34 @@ describe('Tangerine product catalogue', () => {
     expect(initialOfferingIds(null, null)).toHaveLength(3);
   });
 
+  it('only treats chequing as a product when the customer asks about the account itself', () => {
+    expect(namedOfferingIds('There is money in my chequing account.')).not.toContain('chequing');
+    expect(namedOfferingIds('Open a Tangerine Chequing Account.')).toContain('chequing');
+    expect(namedOfferingIds('Compare chequing account features.')).toContain('chequing');
+  });
+
+  it('has a direct official Tangerine URL for every supported next-step product', () => {
+    for (const id of SIGNUP_PRODUCT_IDS) {
+      const product = getOffering(id);
+      expect(product, id).toBeDefined();
+      expect(offeringUrl(product!), id).toMatch(/^https:\/\/www\.tangerine\.ca\//);
+    }
+  });
+
+  it('keeps TFSA Savings access distinct from TFSA GIC maturity restrictions', () => {
+    const tfsa = getOffering('tfsa')!;
+    expect(tfsa.features.join(' ')).toMatch(/TFSA Savings is generally accessible/);
+    expect(tfsa.features.join(' ')).toMatch(/TFSA GICs are generally locked until maturity/);
+    expect(tfsa.features.join(' ')).not.toMatch(/withdraw any time/i);
+  });
+
   it('uses the optional account signals to shape exploratory plans', () => {
-    expect(offeringPlan(null, 'not_sure', { chequingSurplusSignal: true }).ids).toEqual(['savings-account', 'tfsa']);
-    expect(offeringPlan(null, '1_to_5_years', { hasUnassignedCash: true }).ids).toEqual(['gic', 'tfsa']);
+    expect(offeringPlan(null, 'not_sure', { chequingSurplusSignal: true }).ids).toEqual(['savings-account', 'tfsa', 'gic']);
+    expect(offeringPlan('first_home', '1_to_5_years').ids).toEqual(['tfsa', 'gic', 'savings-account']);
+    expect(offeringPlan('build_wealth', 'over_5_years').ids).toEqual(['tfsa', 'rsp', 'investment-funds']);
+    expect(offeringPlan(null, '1_to_5_years', { hasUnassignedCash: true }).ids).toEqual(['gic', 'tfsa', 'savings-account']);
     expect(offeringPlan(null, 'over_5_years', { hasUnassignedCash: true }).ids).toEqual(['tfsa', 'rsp', 'investment-funds']);
+    expect(offeringPlan(null, null).ids).toEqual(['savings-account', 'tfsa', 'gic']);
     expect(offeringReasons(['money-back-card'], null, null)['money-back-card']).toMatch(/third 2% category/);
   });
 
@@ -125,6 +149,26 @@ describe('Tangerine product catalogue', () => {
     expect(chequing.relatedSourceIds).toContain('tng-live-rates');
     expect(getEntry(chequing.sourceId)?.conditions.join(' ')).toMatch(/no monthly fee or minimum balance/i);
     expect(retrieve('Tangerine line of credit prime rate', 7, [], false).some((entry) => entry.id === 'tng-catalogue-line-of-credit')).toBe(true);
+  });
+
+  it('retrieves Tangerine literacy entries by topic and keeps government sources opt-in', () => {
+    const topics = [
+      ['compound interest', 'tng-edu-compound-interest'],
+      ['TFSA vs. RSP', 'tng-edu-tfsa-vs-rrsp'],
+      ['account container and holdings', 'tng-edu-container-vs-holdings'],
+      ['MER and administration fees', 'tng-edu-mer-and-fees'],
+      ['fixed vs. variable rates', 'tng-edu-fixed-vs-variable'],
+      ['credit-card grace period and minimum payment', 'tng-edu-credit-basics'],
+      ['emergency fund', 'tng-edu-emergency-fund'],
+    ] as const;
+    for (const [query, id] of topics) {
+      expect(retrieve(query).some((entry) => entry.id === id && entry.kind === 'tangerine'), query).toBe(true);
+    }
+
+    expect(retrieve('What is a TFSA?').every((entry) => entry.kind === 'tangerine')).toBe(true);
+    const statutory = retrieve('TFSA contribution room', 7, [], true);
+    expect(statutory[0].kind).toBe('tangerine');
+    expect(statutory.some((entry) => entry.id === 'gov-tfsa' && entry.kind === 'government')).toBe(true);
   });
 
   it('records promotion conditions and suppresses stale or out-of-window offers', () => {

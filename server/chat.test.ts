@@ -84,6 +84,47 @@ describe('configuration and failures', () => {
   });
 });
 
+describe('product recommendations', () => {
+  it('recognizes product recommendation phrasing and keeps the response concise', async () => {
+    for (const text of ['What products do you recommend for me?', 'Which products fit me?']) {
+      const { client } = mockClient(final('I can’t choose a product for you.'));
+      const r = await chat(config(client), request(text));
+      expect(r.body.effects).toContainEqual(expect.objectContaining({
+        type: 'offeringsShown',
+        ids: ['savings-account', 'tfsa', 'gic'],
+      }));
+      expect(r.body.reply.split('\n').filter((line) => line.startsWith('- '))).toHaveLength(3);
+      expect(r.body.reply).toMatch(/What goal or timeframe would you like to focus on\?/);
+    }
+  });
+
+  it('uses the first-home goal and 1–5 year horizon to rank accessible options', async () => {
+    const { client } = mockClient(final('Here are options to explore.'));
+    const response = await chat(config(client), request('What products fit me?', {
+      context: {
+        ...EMPTY_CONTEXT,
+        goal: { type: 'first_home', detail: 'save for a down payment' },
+        horizon: '1_to_5_years',
+      },
+    }));
+    expect(response.body.effects).toContainEqual(expect.objectContaining({
+      type: 'offeringsShown',
+      ids: ['tfsa', 'gic', 'savings-account'],
+    }));
+    expect(response.body.reply).not.toMatch(/What goal or timeframe/);
+  });
+
+  it('shows exactly three cards for an explicit three-product comparison request', async () => {
+    const { client } = mockClient(final('Here are three Tangerine products to compare.'));
+    const response = await chat(config(client), request(
+      "I have some extra money in my chequing account, but I'm not sure what to do with it. Can you show me three Tangerine products to compare?",
+    ));
+    const shown = response.body.effects.find((effect) => effect.type === 'offeringsShown');
+    expect(shown).toEqual(expect.objectContaining({ type: 'offeringsShown', ids: ['savings-account', 'tfsa', 'gic'] }));
+    expect(response.body.reply.split('\n').filter((line) => line.startsWith('- '))).toHaveLength(3);
+  });
+});
+
 describe('privacy and grounding', () => {
   it('without permission, no balances or signal evidence reach the model', async () => {
     const { client, requests } = mockClient(tools(call('read_account_snapshot', {})), final('Happy to help generally.'));
@@ -123,6 +164,25 @@ describe('privacy and grounding', () => {
     expect(context.indexOf('[tng-tfsa-options]')).toBeLessThan(context.indexOf('[gov-tfsa]'));
   });
 
+  it('retrieves government sources for uncovered contribution-room rules while keeping Tangerine first', async () => {
+    const { client, requests } = mockClient(final('Tangerine explains the account; the CRA sets current contribution-room rules.', ['tng-edu-tfsa-vs-rrsp', 'gov-tfsa']));
+    await chat(config(client), request('What is my TFSA contribution room?'));
+    const context = requests[0].context;
+    expect(context).toContain('[tng-edu-tfsa-vs-rrsp]');
+    expect(context).toContain('[gov-tfsa]');
+    expect(context.indexOf('[tng-edu-tfsa-vs-rrsp]')).toBeLessThan(context.indexOf('[gov-tfsa]'));
+  });
+
+  it('instructs Sunny to teach beginner concepts with a short example and Tangerine context', async () => {
+    const { client, requests } = mockClient(final('Compound interest earns interest on earlier interest.'));
+    await chat(config(client), request('What is compound interest?'));
+    expect(requests[0].instructions).toMatch(/FINANCIAL EDUCATION & PLAIN-LANGUAGE DEFINITIONS/);
+    expect(requests[0].instructions).toMatch(/3–4 short sentences/);
+    expect(requests[0].instructions).toMatch(/relatable hypothetical example/);
+    expect(requests[0].instructions).toMatch(/using relevant tng entries/);
+    expect(requests[0].instructions).toMatch(/bite-sized next step through a relevant suggestion chip/);
+  });
+
   it('instructs the model to explain optional product suggestions without giving investment advice', async () => {
     const { client, requests } = mockClient(final('I included these products because of your stated goal.'));
     await chat(config(client), request('Why did you suggest these products?', {
@@ -131,6 +191,9 @@ describe('privacy and grounding', () => {
     expect(requests[0].instructions).toMatch(/specific, factual reason for each suggestion/);
     expect(requests[0].instructions).toMatch(/never as an instruction or personalized investment recommendation/);
     expect(requests[0].instructions).toMatch(/When asked why you suggested a product, answer directly/);
+    expect(requests[0].instructions).toMatch(/do NOT write a dense paragraph repeating every card detail/);
+    expect(requests[0].instructions).toMatch(/concise "- " bullets/);
+    expect(requests[0].instructions).toMatch(/GIC rates are fixed\/guaranteed.*Savings rates are variable.*Investment Fund projections are illustrative only and not guaranteed/);
   });
 
   it('sets clear FHSA and credit-card application guidance without collecting sensitive data', async () => {
@@ -148,8 +211,8 @@ describe('privacy and grounding', () => {
     expect(r.body.effects).toEqual([
       expect.objectContaining({
         type: 'offeringsShown',
-        ids: ['savings-account', 'gic', 'tfsa'],
-        reason: expect.stringMatching(/general starting set to compare/),
+        ids: ['savings-account', 'tfsa', 'gic'],
+        reason: expect.stringMatching(/versatile Tangerine starting options/),
         reasons: expect.objectContaining({
           'savings-account': expect.stringMatching(/access/),
           gic: expect.stringMatching(/set term/),
@@ -158,11 +221,13 @@ describe('privacy and grounding', () => {
         featuredId: 'savings-account',
       }),
     ]);
-    expect(r.body.reply).toMatch(/Tangerine Savings Account:.*access.*variable interest/);
-    expect(r.body.reply).toMatch(/Tangerine GICs:/);
-    expect(r.body.reply).toMatch(/Tangerine TFSA/);
-    expect(r.body.reply).toMatch(/general starting set to compare/);
+    expect(r.body.reply).toMatch(/^- Tangerine Savings Account:.*interest rate can change\./m);
+    expect(r.body.reply).toMatch(/^- Tangerine TFSA/m);
+    expect(r.body.reply).toMatch(/^- Tangerine GICs?:/m);
+    expect(r.body.reply.split('\n').filter((line) => line.startsWith('- '))).toHaveLength(3);
+    expect(r.body.reply).toMatch(/What goal or timeframe would you like to focus on\?/);
     expect(r.body.reply).not.toMatch(/can’t choose a product for you/);
+    expect(r.body.effects[0]?.type === 'offeringsShown' ? r.body.effects[0].reason : '').not.toMatch(/chequing|account signals considered/i);
   });
 
   it('uses the customer-confirmed goal and timeline to shape live product suggestions', async () => {
@@ -177,9 +242,9 @@ describe('privacy and grounding', () => {
     expect(r.body.effects).toEqual([
       expect.objectContaining({
         type: 'offeringsShown',
-        ids: ['investment-funds', 'tfsa', 'rsp'],
+        ids: ['tfsa', 'rsp', 'investment-funds'],
         reason: expect.stringMatching(/goal of building wealth and learning about investing.*timeframe of more than five years/),
-        featuredId: 'investment-funds',
+        featuredId: 'tfsa',
         reasons: expect.objectContaining({
           'investment-funds': expect.stringMatching(/longer timeframe/),
           tfsa: expect.stringMatching(/tax treatment/),
@@ -193,9 +258,9 @@ describe('privacy and grounding', () => {
     const { client } = mockClient(final('I can’t choose for you.'));
     const r = await chat(config(client), request('Which Tangerine products should I consider?'));
     expect(r.body.effects).toEqual([
-      expect.objectContaining({ type: 'offeringsShown', ids: expect.arrayContaining(['savings-account', 'gic', 'tfsa']) }),
+      expect.objectContaining({ type: 'offeringsShown', ids: expect.arrayContaining(['savings-account', 'tfsa', 'gic']) }),
     ]);
-    expect(r.body.reply).toMatch(/Here are three Tangerine products to explore/);
+    expect(r.body.reply).toMatch(/versatile Tangerine starting options/);
   });
 
   it('does not turn a request for a personal investment decision into product recommendations', async () => {
@@ -234,6 +299,40 @@ describe('privacy and grounding', () => {
       expect(response.body.reply).toContain(incomeCriteria);
       expect(response.body.reply).toMatch(/never collects application information or submits an application/);
     }
+  });
+
+  it.each([
+    ['Can you help me start a TFSA?', 'tfsa', 'tng-catalogue-tfsa'],
+    ['I want to open a TFSA Savings Account with Tangerine. Can you take me to the correct page?', 'tfsa-savings', 'tng-tfsa-savings'],
+    ['I want to open a GIC.', 'gic', 'tng-catalogue-gic'],
+    ['How do I apply for a Tangerine mortgage?', 'mortgage', 'tng-catalogue-mortgage'],
+    ['I want to open a Tangerine Chequing Account.', 'chequing', 'tng-catalogue-chequing'],
+  ])('prepares a direct official next step for "%s"', async (text, productId, sourceId) => {
+    const { client } = mockClient(final('I can help with that.'));
+    const response = await chat(config(client), request(text));
+    expect(response.body.effects).toContainEqual({ type: 'signupPrepared', productId });
+    expect(response.body.sourceIds).toContain(sourceId);
+  });
+
+  it('keeps an ambiguous application follow-up on the latest product topic, not an older credit card', async () => {
+    const { client } = mockClient(final('I can help you review the mortgage page.'));
+    const response = await chat(config(client), request('What documents do I need to apply?', {
+      messages: [
+        { role: 'customer', text: 'Tell me about the Money-Back World Mastercard.' },
+        { role: 'sunny', text: 'The Money-Back World Mastercard has cash-back rewards.' },
+        { role: 'customer', text: 'I want to explore a Tangerine mortgage.' },
+        { role: 'sunny', text: 'Tangerine mortgage options and rates depend on the product.' },
+        { role: 'customer', text: 'What documents do I need to apply?' },
+      ],
+    }));
+    expect(response.body.effects).toContainEqual({ type: 'signupPrepared', productId: 'mortgage' });
+    expect(response.body.effects).not.toContainEqual({ type: 'signupPrepared', productId: 'money-back-world' });
+  });
+
+  it('does not infer a product from a generic application follow-up without an active product topic', async () => {
+    const { client } = mockClient(final('Which product are you asking about?'));
+    const response = await chat(config(client), request('What documents do I need to apply?'));
+    expect(response.body.effects).not.toContainEqual(expect.objectContaining({ type: 'signupPrepared' }));
   });
 
   it('does not treat Sunny’s own external-source offer as customer consent', async () => {
@@ -343,7 +442,7 @@ describe('goals, offerings, next steps and calculations', () => {
     expect(toolOutputs(requests)[0].status).toBe('not_needed');
 
     const recommendation = mockClient(tools(call('show_offerings', { offering_ids: ['savings-account'], reason: 'General starting point.' })), final('Here is an option.'));
-    await chat(config(recommendation.client), request('What do you recommend?'));
+    await chat(config(recommendation.client), request('Which products fit me?'));
     expect(toolOutputs(recommendation.requests)[0].status).toBe('shown');
   });
 
@@ -406,6 +505,24 @@ describe('goals, offerings, next steps and calculations', () => {
     expect(toolOutputs(requests)[0]).toMatchObject({
       signalContext: { hasUnassignedCash: true, chequingSurplusSignal: true, monthlyExpensesShared: true, hasSavingsAccount: true },
     });
+    expect((effect as Extract<ChatResponse['effects'][number], { type: 'offeringsShown' }>).reason).not.toMatch(/Account signals considered/i);
+  });
+
+  it('mentions account signals in the card reason only with permission and an active signal', async () => {
+    const { client } = mockClient(
+      tools(call('show_offerings', { offering_ids: [], reason: 'Account signals considered: unknown.' })),
+      final('Here are three options to explore.'),
+    );
+    const response = await chat(config(client), request('What Tangerine products should I consider?', {
+      permission: 'granted',
+      account: ACCOUNT,
+    }));
+    const effect = response.body.effects.find((item) => item.type === 'offeringsShown');
+    expect(effect).toMatchObject({
+      type: 'offeringsShown',
+      reason: expect.stringMatching(/Since you have not-yet-assigned cash in your chequing account/),
+    });
+    expect(effect?.type === 'offeringsShown' ? effect.reason : '').not.toMatch(/Account signals considered/i);
   });
 
   it('shows the entire catalogue on an explicit browse request, even if the model supplies no ids', async () => {
@@ -452,40 +569,50 @@ describe('goals, offerings, next steps and calculations', () => {
     expect(r.body.effects[0]).toMatchObject({
       type: 'scenario',
       years: 5,
-      customRate: null,
       startingAmount: 15000,
       monthlyContribution: 400,
       compareTangerineOptions: true,
       options: expect.arrayContaining([expect.objectContaining({ id: 'gicBenchmark', annualRate: 4.05 })]),
     });
     expect((r.body.effects[0] as Extract<ChatResponse['effects'][number], { type: 'scenario' }>).yearlyBreakdown).toHaveLength(6);
-    expect((r.body.effects[0] as Extract<ChatResponse['effects'][number], { type: 'scenario' }>).options.some((o) => o.id === 'illustrativeFund')).toBe(false);
 
     const invented = mockClient(tools(call('calculate_scenario', { starting_amount: 15000, monthly: 900, months: 60 })), final('…'));
     await chat(config(invented.client), request('What if I added money monthly for 60 months?', { ...granted, context }));
     expect(toolOutputs(invented.requests)[0].status).toBe('rejected');
   });
 
-  it('opens an explicitly requested calculator when the model skips its tool', async () => {
-    const model = mockClient(final('I have set up your comparison.'));
-    const response = await chat(config(model.client), request('I have $10,000 saved and can contribute $300 monthly. Can you compare how my money could grow over five years? Please open the interactive calculator.'));
-    expect(response.body.effects).toContainEqual(expect.objectContaining({ type: 'scenario', startingAmount: 10000, monthlyContribution: 300, years: 5, customRate: null, options: expect.arrayContaining([expect.objectContaining({ id: 'savingsAccount' }), expect.objectContaining({ id: 'tfsaSavings' })]) }));
-    expect(response.body.reply).toMatch(/interactive savings and growth comparison/i);
+  it('uses the 5-year default when the model proposes 3 years without a customer-stated timeframe', async () => {
+    const client = mockClient(
+      tools(call('calculate_scenario', { starting_amount: 5000, monthly: 200, years: 3 })),
+      final('Here is an interactive comparison.'),
+    );
+    const response = await chat(config(client.client), request(
+      'If I start with $5,000 and add $200 a month, how much could I save across Tangerine’s options?',
+      { context: { ...EMPTY_CONTEXT, horizon: '1_to_5_years' } },
+    ));
+    expect(toolOutputs(client.requests)[0]).toMatchObject({
+      status: 'calculated',
+      years: 5,
+      totalContributions: 17_000,
+    });
+    expect(response.body.effects[0]).toMatchObject({
+      type: 'scenario',
+      years: 5,
+      yearlyBreakdown: expect.arrayContaining([expect.objectContaining({ year: 5 })]),
+    });
   });
 
-  it('retains a successful model calculator call without duplicating it', async () => {
-    const model = mockClient(tools(call('calculate_scenario', { starting_amount: 10000, monthly: 300, years: 5 })), final('Here is your calculator.'));
-    const response = await chat(config(model.client), request('Compare $10,000 saved and $300 monthly over five years in the calculator.'));
-    expect(toolOutputs(model.requests)[0].status).toBe('calculated');
-    expect(response.body.effects.filter((effect) => effect.type === 'scenario')).toHaveLength(1);
-  });
-
-  it('asks for missing calculator inputs instead of claiming a result or using defaults', async () => {
-    const model = mockClient(tools(call('calculate_scenario', {})), final('I have opened the calculator.'));
-    const response = await chat(config(model.client), request('Please open the calculator for my savings.'));
-    expect(response.body.effects.some((effect) => effect.type === 'scenario')).toBe(false);
-    expect(response.body.reply).toMatch(/starting amount, monthly contribution/);
-    expect(response.body.reply).not.toMatch(/opened/);
+  it('uses the 10-year default for a long-term context rather than treating “over 5 years” as exactly 5', async () => {
+    const client = mockClient(
+      tools(call('calculate_scenario', { starting_amount: 5000, monthly: 200, years: 5 })),
+      final('Here is an interactive comparison.'),
+    );
+    const response = await chat(config(client.client), request(
+      'If I start with $5,000 and add $200 a month, I want to compare options for more than 5 years.',
+      { context: { ...EMPTY_CONTEXT, horizon: 'over_5_years' } },
+    ));
+    expect(toolOutputs(client.requests)[0]).toMatchObject({ status: 'calculated', years: 10 });
+    expect(response.body.effects[0]).toMatchObject({ type: 'scenario', years: 10 });
   });
 
   it.each([
@@ -494,14 +621,13 @@ describe('goals, offerings, next steps and calculations', () => {
     ['not_sure', 5],
     [null, 5],
     ['over_5_years', 10],
-  ] as const)('asks for explicit inputs for an incomplete calculator request with %s context', async (horizon, expectedYears) => {
+  ] as const)('uses the %s context to default the calculator to %s years', async (horizon, expectedYears) => {
     const client = mockClient(tools(call('calculate_scenario', {})), final('Here is an interactive comparison.'));
     const r = await chat(config(client.client), request('Compare growth options.', {
       context: { ...EMPTY_CONTEXT, horizon },
     }));
     expect(toolOutputs(client.requests)[0]).toMatchObject({ status: 'calculated', years: expectedYears });
-    expect(r.body.effects.some((effect) => effect.type === 'scenario')).toBe(false);
-    expect(r.body.reply).toMatch(/starting amount, monthly contribution/);
+    expect(r.body.effects[0]).toMatchObject({ type: 'scenario', years: expectedYears });
   });
 
   it('uses permissioned unassigned cash or a zero starting amount for the growth scenario', async () => {
@@ -521,6 +647,138 @@ describe('goals, offerings, next steps and calculations', () => {
     const withoutAccount = await chat(config(general.client), request('I can save $400 per month.'));
     expect(withoutAccount.body.effects[0]).toMatchObject({ type: 'scenario', startingAmount: 0, monthlyContribution: 400, years: 5 });
     expect(toolOutputs(general.requests)[0].note).toMatch(/ask briefly whether the customer would like to include one/);
+  });
+
+  it('returns exact wealth balances and growth in the calculator tool summary', async () => {
+    const client = mockClient(
+      tools(call('calculate_scenario', { starting_amount: 5000, monthly: 200, years: 5 })),
+      final('Here are the calculated figures.'),
+    );
+    const response = await chat(config(client.client), request('Compare growth using $5,000 and $200 per month for 5 years.'));
+    const result = toolOutputs(client.requests)[0];
+    expect(result.summaryText).toContain('Tangerine Savings Account: ending balance $');
+    expect(result.summaryText).toContain('Tangerine GIC Benchmark: ending balance $');
+    expect(result.summaryText).not.toContain('Illustrative Investment Fund / Custom Rate: ending balance $');
+    expect(result.options).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'savingsAccount', endingBalance: expect.any(Number), totalGrowth: expect.any(Number) }),
+      expect.objectContaining({ id: 'tfsaSavings', endingBalance: expect.any(Number), totalGrowth: expect.any(Number) }),
+      expect.objectContaining({ id: 'gicBenchmark', endingBalance: expect.any(Number), totalGrowth: expect.any(Number) }),
+    ]));
+    expect(response.body.reply).toContain(result.summaryText);
+    expect(response.body.effects[0]).toMatchObject({ type: 'scenario', years: 5 });
+  });
+
+  it('calculates a mortgage payment and emits a calculator effect with the official-page assumptions', async () => {
+    const client = mockClient(
+      tools(call('calculate_mortgage', {
+        mode: 'payment',
+        home_price: 500_000,
+        down_payment: 100_000,
+        annual_rate: 4.79,
+        amortization_years: 25,
+      })),
+      final('The calculator shows an illustrative payment.'),
+    );
+    const response = await chat(config(client.client), request(
+      'Estimate a mortgage payment for a $500,000 home with $100,000 down over 25 years at 4.79%.',
+    ));
+    expect(toolOutputs(client.requests)[0]).toMatchObject({
+      status: 'calculated',
+      mortgageAmount: 400_000,
+      annualRate: 4.79,
+      amortizationYears: 25,
+      regularPayment: expect.any(Number),
+      principalPaidInTerm: expect.any(Number),
+      interestPaidInTerm: expect.any(Number),
+    });
+    expect(response.body.effects[0]).toMatchObject({
+      type: 'mortgageScenario',
+      mortgageAmount: 400_000,
+      annualRate: 4.79,
+      termYears: 5,
+    });
+  });
+
+  it('shows a mortgage calculator for a calculator request even if the model omits the tool call', async () => {
+    const { client } = mockClient(final('I can open a mortgage calculator for you.'));
+    const response = await chat(config(client), request('Can you show me the mortgage payment calculator?'));
+    expect(response.body.effects).toContainEqual(expect.objectContaining({ type: 'mortgageScenario', mode: 'payment' }));
+    expect(response.body.effects).not.toContainEqual(expect.objectContaining({ type: 'signupPrepared' }));
+    expect(response.body.reply).toMatch(/calculator is ready/i);
+    expect(response.body.reply).not.toMatch(/\$0\.00/);
+  });
+
+  it('opens the wealth calculator for an explicit savings comparison when the model omits the tool call', async () => {
+    const { client } = mockClient(final('I can open that comparison for you.'));
+    const response = await chat(config(client), request('Compare growth starting with $5,000 and saving $200 per month for 5 years.'));
+    expect(response.body.effects).toContainEqual(expect.objectContaining({
+      type: 'scenario',
+      startingAmount: 5000,
+      monthlyContribution: 200,
+      years: 5,
+    }));
+    expect(response.body.reply).toMatch(/interactive savings and growth comparison/i);
+  });
+
+  it('opens the calculator on the first response for the complete customer request', async () => {
+    const { client } = mockClient(final('I’ve opened the interactive calculator for you.'));
+    const response = await chat(config(client), request(
+      'I have $5,000 saved and can add $200 monthly. Compare how my money could grow over five years and open the interactive calculator.',
+    ));
+    expect(response.body.effects).toContainEqual(expect.objectContaining({
+      type: 'scenario',
+      startingAmount: 5000,
+      monthlyContribution: 200,
+      years: 5,
+    }));
+    expect(response.body.reply).toMatch(/interactive savings and growth comparison/i);
+  });
+
+  it.each([
+    'Explore Tangerine mortgage options',
+    'Check live mortgage rates',
+  ])('opens the mortgage explorer when asked to "%s"', async (question) => {
+    const { client } = mockClient(final('Use the mortgage explorer card below to compare options.'));
+    const response = await chat(config(client), request(question));
+    expect(response.body.effects).toContainEqual(expect.objectContaining({ type: 'mortgageScenario', mode: 'payment' }));
+  });
+
+  it('recognizes a plain home-affordability question and keeps it an estimate, not an application', async () => {
+    const { client } = mockClient(final('I can show an illustrative estimate.'));
+    const response = await chat(config(client), request('How much house could I afford?'));
+    expect(response.body.effects).toContainEqual(expect.objectContaining({ type: 'mortgageScenario', mode: 'affordability' }));
+    expect(response.body.effects).not.toContainEqual(expect.objectContaining({ type: 'signupPrepared' }));
+  });
+
+  it('does not carry a stale first-home goal into a new general goal and timeframe', async () => {
+    const client = mockClient(
+      tools(call('show_offerings', { offering_ids: [] })),
+      final('Here are some options to explore.'),
+    );
+    const response = await chat(config(client.client), request(
+      'I want to save for a goal in about 3 years. What Tangerine options fit that timeframe?',
+      {
+        context: { ...EMPTY_CONTEXT, goal: { type: 'first_home', detail: 'Buying a first home' }, horizon: 'over_5_years' },
+        messages: [
+          { role: 'customer', text: 'I am saving for my first home over the long term.' },
+          { role: 'sunny', text: 'We can explore options for that first-home goal.' },
+          { role: 'customer', text: 'I want to save for a goal in about 3 years. What Tangerine options fit that timeframe?' },
+        ],
+      },
+    ));
+    const effect = response.body.effects.find((item) => item.type === 'offeringsShown');
+    expect(effect).toMatchObject({ ids: ['savings-account', 'gic', 'tfsa'] });
+    expect(JSON.stringify(effect)).not.toMatch(/first.home|FHSA/i);
+  });
+
+  it('does not mistake existing chequing cash for a chequing product request', async () => {
+    const client = mockClient(
+      tools(call('show_offerings', { offering_ids: [] })),
+      final('Here are a few options.'),
+    );
+    const response = await chat(config(client.client), request('There is money in my chequing account. What Tangerine products do you recommend?'));
+    const effect = response.body.effects.find((item) => item.type === 'offeringsShown');
+    expect(effect?.type === 'offeringsShown' ? effect.ids : []).not.toContain('chequing');
   });
 
   it('guards permission requests, summaries and support previews', async () => {

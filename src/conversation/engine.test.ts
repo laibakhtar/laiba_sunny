@@ -71,7 +71,7 @@ describe('dashboard signal and nudge', () => {
     expect(s.memory.permission).toBe('not_asked');
     expect(card).toMatchObject({
       kind: 'offerings',
-      ids: ['savings-account', 'gic', 'tfsa'],
+      ids: ['savings-account', 'tfsa', 'gic'],
       promotionIds: [],
     });
     if (card?.kind === 'offerings') expect(Object.keys(card.reasons ?? [])).toHaveLength(3);
@@ -114,9 +114,9 @@ describe('main demo loop (scripted)', () => {
     s = click(s, 'More than 5 years away');
     const offers = s.messages.find((m) => m.card?.kind === 'offerings')?.card;
     expect(offers).toMatchObject({ kind: 'offerings' });
-    if (offers?.kind === 'offerings') expect(offers.ids).toEqual(['investment-funds', 'tfsa', 'rsp']);
+    if (offers?.kind === 'offerings') expect(offers.ids).toEqual(['tfsa', 'rsp', 'investment-funds']);
     if (offers?.kind === 'offerings') {
-      expect(offers.featuredId).toBe('investment-funds');
+      expect(offers.featuredId).toBe('tfsa');
       expect(Object.keys(offers.reasons ?? {})).toHaveLength(3);
       expect(offers.reasons?.['investment-funds']).toMatch(/longer timeframe/);
       expect(offers.reasons?.tfsa).toMatch(/tax treatment/);
@@ -352,7 +352,7 @@ describe('AI effects are re-validated', () => {
     expect(allText(s)).toMatch(/more than the \$28,000 in your chequing account, so I haven’t saved it/);
     s = respond(s, { sourceIds: ['tng-investment-funds', 'made-up'], effects: [{ type: 'offeringsShown', ids: ['investment-funds', 'crypto-fund'], reason: 'You asked' }] });
     expect(s.messages.find((m) => m.ai && m.text === 'ok' && m.sources)?.sources).toEqual(['tng-investment-funds']);
-    expect(s.messages.at(-1)?.card).toMatchObject({ kind: 'offerings', ids: ['savings-account', 'gic', 'tfsa'] });
+    expect(s.messages.at(-1)?.card).toMatchObject({ kind: 'offerings', ids: ['savings-account', 'tfsa', 'gic'] });
   });
 
   it('applies valid goal, horizon, next step and allocations', () => {
@@ -371,6 +371,21 @@ describe('AI effects are re-validated', () => {
   it('renders the signup next step from a validated AI effect', () => {
     const s = respond(aiState(), { effects: [{ type: 'signupPrepared', productId: 'money-back-card' }] });
     expect(s.messages.some((m) => m.card?.kind === 'signup' && m.card.productId === 'money-back-card')).toBe(true);
+  });
+
+  it('keeps permissioned cash-aware recommendation ordering in the rendered card', () => {
+    const s = respond(aiState(), {
+      effects: [
+        { type: 'horizonSet', horizon: '1_to_5_years' },
+        { type: 'offeringsShown', ids: ['gic', 'tfsa', 'savings-account'], reason: 'Based on your timeline.' },
+      ],
+    });
+    const card = s.messages.find((message) => message.card?.kind === 'offerings')?.card;
+    expect(card).toMatchObject({
+      kind: 'offerings',
+      ids: ['gic', 'tfsa', 'savings-account'],
+      featuredId: 'gic',
+    });
   });
 });
 

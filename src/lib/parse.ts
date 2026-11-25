@@ -12,7 +12,7 @@ export interface FoundAmount {
 
 const AMOUNT_RE =
   /(-|−|\bminus\s+|\bnegative\s+)?\$?\s?(?<![\d.,])(\d[\d,]*(?:\.\d+)?)(?![\d.,]*\d)\s?(k\b|thousand\b)?(?!\s*(?:%|(?:percent|years?|yrs?|months?|mos?)\b))/gi;
-const DURATION_RE = /\b(\d+(?:\.\d+)?|one|two|three|four|five|six|seven|eight|nine|ten)\s*(?:[-–]\s*)?(years?|yrs?|months?|mos?)\b/gi;
+const DURATION_RE = /(\d+(?:\.\d+)?|one|two|three|four|five|six|seven|eight|nine|ten)\s*(?:[-–]\s*)?(years?|yrs?|months?|mos?)\b/gi;
 
 /** All dollar-like amounts in the text, e.g. "$1,200", "14000", "1.5k", "-500". Excludes durations and percentages. */
 export function findAmounts(text: string): FoundAmount[] {
@@ -31,8 +31,8 @@ export function findAmounts(text: string): FoundAmount[] {
 /** All durations in the text, in whole months ("3 years" → 36, "18 months" → 18). */
 export function findDurations(text: string): number[] {
   const out: number[] = [];
+  const words: Record<string, number> = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10 };
   for (const m of text.matchAll(DURATION_RE)) {
-    const words: Record<string, number> = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10 };
     const n = words[m[1].toLowerCase()] ?? parseFloat(m[1]);
     const months = /^y/i.test(m[2]) ? Math.round(n * 12) : Math.round(n);
     if (months >= 1) out.push(months);

@@ -70,6 +70,7 @@ describe('Gemini request mapping', () => {
       'show_offerings',
       'record_next_step',
       'calculate_scenario',
+      'calculate_mortgage',
       'prepare_summary',
       'prepare_support_preview',
     ]);

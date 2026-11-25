@@ -136,7 +136,7 @@ export function SummaryView({ state, dispatch, onRestart }: Props) {
             <ul className="plain-list source-print-list">
               {s.sources.map((e) => (
                 <li key={e.id}>
-                  {e.publisher}, “{e.pageTitle}” ({e.kind === 'tangerine' ? 'Tangerine' : 'general information'}, reviewed {e.reviewed}) <span className="url">{e.url}</span>
+                  {e.publisher}, “{e.pageTitle}” ({e.kind === 'tangerine' ? 'Tangerine' : 'government / agency information'}, reviewed {e.reviewed}) <span className="url">{e.url}</span>
                 </li>
               ))}
             </ul>

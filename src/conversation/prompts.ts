@@ -229,7 +229,7 @@ function aiPrompt(state: ConversationState): Prompt {
         aiSay('Compare 5-year savings & growth options', true),
         aiSay('What can Tangerine help me with?'),
         aiSay('What’s the difference between saving and investing?'),
-        aiSay('Is a TFSA an investment?'),
+        aiSay('Explain TFSA vs. RSP simply'),
         aiSay('Help me think through a goal.'),
       ],
     };

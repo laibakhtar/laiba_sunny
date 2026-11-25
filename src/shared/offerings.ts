@@ -5,6 +5,7 @@
  */
 import { getEntry } from './knowledge.ts';
 import { offerIsCurrentAsOf, TANGERINE_CATALOGUE, TANGERINE_OFFERS, type CatalogueOffer } from './catalogue.ts';
+import { findDurations } from '../lib/parse.ts';
 
 export type GoalType = 'build_wealth' | 'accessible_interest' | 'first_home' | 'understand_options' | 'other';
 
@@ -45,7 +46,7 @@ export const OFFERINGS: Offering[] = [
     name: 'Tangerine Savings Account',
     summary: 'Keeps money accessible while it earns interest.',
     features: ['No monthly fee, no minimum balance', 'Interest calculated daily, paid monthly (rates can change)', 'Up to 10 savings accounts for separate goals', 'Automatic Savings Program you can change or cancel'],
-    conditions: [],
+    conditions: ['A fee applies to transfers to another financial institution'],
     risks: ['Interest may not keep up with rising costs'],
     sources: ['tng-savings-account', 'tng-saving-vs-investing'],
     relevantFor: ['accessible_interest', 'first_home', 'understand_options', 'other'],
@@ -84,10 +85,20 @@ export const OFFERINGS: Offering[] = [
     relevantFor: ['understand_options', 'other'],
   },
   {
+    id: 'tfsa-savings',
+    name: 'Tangerine TFSA Savings Account',
+    summary: 'A flexible TFSA Savings Account for tax-free interest without a GIC term lock-in.',
+    features: ['No monthly fee or minimum balance', 'Money is generally accessible and not locked in', 'Interest and withdrawals are generally tax-free within CRA contribution rules'],
+    conditions: ['You’re responsible for staying within your TFSA contribution room', 'Review the current variable rate and account terms on Tangerine’s official page'],
+    risks: ['The variable interest rate can change', 'This is different from a TFSA GIC, which is generally locked until maturity'],
+    sources: ['tng-tfsa-savings'],
+    relevantFor: ['accessible_interest', 'first_home', 'understand_options', 'other'],
+  },
+  {
     id: 'tfsa',
-    name: 'Tangerine TFSA options',
+    name: 'Tangerine TFSA (savings, GIC or investment funds)',
     summary: 'A tax-free account; what you hold inside it can be savings, a GIC or investment funds.',
-    features: ['TFSA Savings Account, Tax-Free GIC, or Tax-Free Investment Fund Account', 'Growth generally tax-free; access depends on the underlying product, and GICs may be locked until maturity', 'No fees while funds stay with Tangerine'],
+    features: ['TFSA Savings Account, Tax-Free GIC, or Tax-Free Investment Fund Account', 'TFSA Savings is generally accessible; TFSA GICs are generally locked until maturity; investment-fund values fluctuate', 'No fees while funds stay with Tangerine'],
     conditions: ['You’re responsible for staying within your contribution room', 'A fee applies when transferring out to another institution'],
     risks: ['Risk depends on the holding: savings and GICs differ from investment funds'],
     sources: ['tng-tfsa-options', 'gov-tfsa'],
@@ -95,7 +106,7 @@ export const OFFERINGS: Offering[] = [
   },
   {
     id: 'rsp',
-    name: 'Tangerine RSP options',
+    name: 'Tangerine RSP (savings, GIC or investment funds)',
     summary: 'A registered retirement account with tax-deductible contributions.',
     features: ['RSP Savings Account, RSP GIC, or RSP Investment Fund Account', 'Contributions tax deductible; growth tax-deferred'],
     conditions: ['Withdrawals are taxable income, with tax withheld', '$50 fee to transfer an RSP to another institution'],
@@ -183,12 +194,13 @@ for (const product of TANGERINE_CATALOGUE) {
 const BY_ID = new Map(OFFERINGS.map((o) => [o.id, o]));
 const OFFER_BY_ID = new Map(TANGERINE_OFFERS.map((offer) => [offer.id, offer]));
 const NAMED_PRODUCT_PATTERNS: [string, RegExp][] = [
+  ['tfsa-savings', /\btfsa\s+savings(?: account)?\b/],
   ['savings-account', /savings account/],
-  ['chequing', /\bchequing\b|\bchecking\b|payroll|direct deposit|debit card/],
+  ['chequing', /\b(?:open|apply for|compare|recommend|features?|fees?|tell me about)\b.{0,35}\b(?:tangerine\s+)?chequing(?: account)?\b|\btangerine\s+chequing(?: account)?\b|\bchequing account (?:features?|fees?|rates?)\b/i],
   ['usd-savings', /\b(?:us|u\.s\.) dollars?\b|\busd\b/],
   ['tfsa', /tfsa|tax.free/],
-  ['rsp', /\brr?sp\b|retirement/],
   ['rif', /\brif\b|retirement income fund/],
+  ['rsp', /\brr?sp\b|registered retirement savings|retirement account/],
   ['gic', /\bgics?\b|guaranteed/],
   ['investment-funds', /investment funds?|mutual funds?|portfolio|etf/],
   ['rewards-world-elite', /rewards world elite|world elite|scene\+|rewards mastercard/],
@@ -245,7 +257,24 @@ export function eligiblePromotionIds(
   });
 }
 
-export const SIGNUP_PRODUCT_IDS = ['savings-account', 'money-back-card', 'money-back-world', 'rewards-world-elite'] as const;
+export const SIGNUP_PRODUCT_IDS = [
+  'savings-account',
+  'chequing',
+  'usd-savings',
+  'tfsa-savings',
+  'tfsa',
+  'rsp',
+  'rif',
+  'gic',
+  'investment-funds',
+  'money-back-card',
+  'money-back-world',
+  'rewards-world-elite',
+  'mortgage',
+  'heloc',
+  'line-of-credit',
+  'rsp-loan',
+] as const;
 export type SignupProductId = (typeof SIGNUP_PRODUCT_IDS)[number];
 
 export function isSignupProductId(id: string): id is SignupProductId {
@@ -254,33 +283,46 @@ export function isSignupProductId(id: string): id is SignupProductId {
 
 export function signupProductFromText(text: string): SignupProductId | null {
   const t = text.toLowerCase();
-  if (/\b(?:rewards world elite|world elite|scene\+)\b/.test(t)) return 'rewards-world-elite';
-  if (/\b(?:money.?back.{0,12}world|world mastercard)\b/.test(t)) return 'money-back-world';
-  if (/\b(?:money.?back card|cash.?back card|credit card)\b/.test(t)) return 'money-back-card';
-  if (/\b(?:savings account|save account)\b/.test(t)) return 'savings-account';
+  const named = namedOfferingIds(t).find(isSignupProductId);
+  if (named) return named;
+  if (/\b(?:credit cards?|mastercards?)\b/.test(t)) return 'money-back-card';
   return null;
 }
 
 export function wantsToStartSignup(text: string): boolean {
-  return /\b(?:open|apply|sign.?up|start (?:an? )?(?:application|account)|get started|interested in|ready to|want to (?:open|apply|sign up|get|start)|would like to (?:open|apply|sign up|get|start)|want (?:a|an|the) (?:new )?(?:credit card|savings account))\b/i.test(text);
+  const normalized = text.toLowerCase();
+  const hasProduct = NAMED_PRODUCT_PATTERNS.some(([id, pattern]) => id !== 'fhsa-status' && id !== 'advisors' && pattern.test(normalized));
+  const calculatorOnly = /\bmortgage\b.{0,30}\bcalculator\b/i.test(normalized) && !/\b(?:open|apply|sign.?up|application)\b/i.test(normalized);
+  if (calculatorOnly) return false;
+  const explicitIntent = /\b(?:open|apply for|apply|sign.?up for|start|set up|get started with|ready to open|want to open|would like to open)\b/i.test(normalized);
+  const genericAccountIntent = /\b(?:open|apply|start|set up|get started)\b.{0,35}\b(?:account|product|card|mortgage|gic)\b/i.test(text);
+  const applicationFollowup = /\b(?:what|which|any|do i need|how do i)\b.{0,70}\b(?:documents?|paperwork|requirements?|steps?)\b.{0,50}\b(?:apply|open|start)\b|\bwhat documents do i need to apply\b/i.test(text);
+  return (explicitIntent && (hasProduct || genericAccountIntent)) || applicationFollowup;
 }
 
 export function resolveSignupProduct(
   text: string,
-  previousSunny: string[],
-  offeringsShown: string[],
+  previousContext: string[],
 ): SignupProductId | null {
   if (!wantsToStartSignup(text)) return null;
   const explicit = signupProductFromText(text);
   if (explicit) return explicit;
-  for (const previous of previousSunny) {
-    const suggested = signupProductFromText(previous);
-    if (suggested && offeringsShown.includes(suggested)) return suggested;
+  for (const previous of previousContext) {
+    const matches = namedOfferingIds(previous).filter(isSignupProductId);
+    if (matches.length === 1) return matches[0];
+    if (matches.length > 1) return null;
   }
   return null;
 }
 
 export function signupChecklist(id: SignupProductId): string[] {
+  if (id === 'tfsa-savings') {
+    return [
+      'Review the current variable rate and account terms on Tangerine’s official TFSA Savings Account page.',
+      'Tangerine says TFSA Savings is not locked in and has no minimum balance or monthly fee.',
+      'TFSA Savings is generally accessible; Tax-Free GICs held in a TFSA are generally locked until maturity.',
+    ];
+  }
   if (id === 'savings-account') {
     return [
       'Review the current variable interest rate and account terms on Tangerine’s page.',
@@ -297,12 +339,21 @@ export function signupChecklist(id: SignupProductId): string[] {
       'Depositing Money-Back Rewards into a Tangerine Savings Account unlocks a third 2% category.',
     ];
   }
-  return [
-    'The annual fee is $120; World Elite eligibility includes $80,000 personal income, $150,000 household income, or $400,000 in assets under management.',
-    'Credit approval is required and is not guaranteed; applying involves a credit check.',
-    'Review the current purchase rate, rewards terms and full cardholder terms before applying.',
-    'Cash advances and carrying a balance can cost more than the rewards earned.',
-  ];
+  if (id === 'rewards-world-elite') {
+    return [
+      'The annual fee is $120; World Elite eligibility includes $80,000 personal income, $150,000 household income, or $400,000 in assets under management.',
+      'Credit approval is required and is not guaranteed; applying involves a credit check.',
+      'Review the current purchase rate, rewards terms and full cardholder terms before applying.',
+      'Cash advances and carrying a balance can cost more than the rewards earned.',
+    ];
+  }
+  const product = getOffering(id);
+  return product
+    ? [
+        'Review the current rates, eligibility, fees and terms on Tangerine’s official product page.',
+        ...product.conditions.slice(0, 2),
+      ]
+    : [];
 }
 
 /** Keep only real offering ids, de-duplicated, in order. */
@@ -380,7 +431,7 @@ export function offeringRecommendationReason(
     }
     return goal === 'first_home'
       ? 'You said you’re saving toward a first home; a Tangerine TFSA is one registered account to compare with an RSP, but its withdrawal and contribution rules differ from an FHSA.'
-      : 'A Tangerine TFSA may be worth comparing for its tax treatment; the account can hold savings, GICs or investment funds, which have different access and risk.';
+      : 'A Tangerine TFSA may be worth comparing for its tax treatment; TFSA Savings is generally accessible, while TFSA GICs are generally locked until maturity and investment funds fluctuate.';
   }
   if (id === 'rsp') {
     return 'A Tangerine RSP is a retirement account to compare if retirement saving is part of your goal; contributions and withdrawals have tax consequences.';
@@ -406,6 +457,50 @@ export function offeringReasons(
 export type HorizonType = 'under_1_year' | '1_to_5_years' | 'over_5_years' | 'not_sure';
 export type Emphasis = 'access' | 'balanced' | 'growth' | 'flexible';
 
+export function offeringContextForMessages(
+  initialGoal: GoalType | null,
+  initialHorizon: HorizonType | null,
+  customerMessages: string[],
+): { goal: GoalType | null; horizon: HorizonType | null } {
+  let goal = initialGoal;
+  for (const text of customerMessages.slice().reverse()) {
+    if (/\b(?:first home|fhsa|down payment|save for (?:a )?(?:home|house|condo)|buy (?:a )?(?:home|house|condo))\b/i.test(text)) {
+      goal = 'first_home';
+      break;
+    }
+    if (
+      goal === 'first_home' &&
+      (/\b(?:save|saving)\b.{0,35}\b(?:a|my|another|new)\s+goal\b|\bgoal\b.{0,45}\b(?:in|within|over|about)\b|\b(?:general|different|another) goal\b/i.test(text))
+    ) {
+      goal = null;
+      break;
+    }
+    if (/\b(?:build wealth|grow my savings|invest for retirement|long.term growth)\b/i.test(text)) {
+      goal = 'build_wealth';
+      break;
+    }
+    if (/\b(?:keep|need|want).{0,30}\baccessible\b|\baccess to (?:my )?money\b/i.test(text)) {
+      goal = 'accessible_interest';
+      break;
+    }
+  }
+
+  let horizon = initialHorizon;
+  for (const text of customerMessages.slice().reverse()) {
+    const comparative = /\b(?:more than|over|at least)\s+(?:the\s+next\s+)?\d+(?:\.\d+)?\s*(?:years?|yrs?|months?|mos?)\b/i.test(text);
+    const duration = findDurations(text).at(-1);
+    if (duration !== undefined) {
+      horizon = duration > 60 || (comparative && duration === 60)
+        ? 'over_5_years'
+        : duration <= 12
+          ? 'under_1_year'
+          : '1_to_5_years';
+      break;
+    }
+  }
+  return { goal, horizon };
+}
+
 export interface OfferingSignals {
   hasUnassignedCash?: boolean;
   chequingSurplusSignal?: boolean;
@@ -419,7 +514,7 @@ export interface OfferingPlan {
   featuredId: string;
 }
 
-const SHORT_TERM = ['savings-account', 'gic', 'tfsa'];
+const SHORT_TERM = ['savings-account', 'tfsa', 'gic'];
 
 /**
  * Deterministic rule for the *initial* product exploration, used by both the
@@ -438,24 +533,33 @@ export function offeringPlan(
   signals: OfferingSignals = {},
 ): OfferingPlan {
   if (signals.chequingSurplusSignal && (horizon === 'under_1_year' || horizon === 'not_sure')) {
-    return { ids: ['savings-account', 'tfsa'], emphasis: 'access', featuredId: 'savings-account' };
+    return { ids: ['savings-account', 'tfsa', 'gic'], emphasis: 'access', featuredId: 'savings-account' };
   }
   if (signals.hasUnassignedCash && horizon === '1_to_5_years') {
-    return { ids: ['gic', 'tfsa'], emphasis: 'balanced', featuredId: 'gic' };
+    const ids = goal === 'first_home'
+      ? ['tfsa', 'gic', 'savings-account']
+      : ['gic', 'tfsa', 'savings-account'];
+    return { ids, emphasis: 'balanced', featuredId: ids[0] };
   }
   if (signals.hasUnassignedCash && horizon === 'over_5_years') {
     return { ids: ['tfsa', 'rsp', 'investment-funds'], emphasis: 'growth', featuredId: 'tfsa' };
   }
   if (horizon === 'under_1_year') return { ids: SHORT_TERM, emphasis: 'access', featuredId: 'savings-account' };
   if (horizon === '1_to_5_years') {
-    const ids = goal === 'build_wealth' || goal === 'understand_options'
-      ? ['savings-account', 'gic', 'investment-funds']
-      : ['savings-account', 'gic', 'tfsa'];
-    return { ids, emphasis: 'balanced', featuredId: goal === 'build_wealth' ? 'investment-funds' : 'savings-account' };
+    const ids = goal === 'first_home'
+      ? ['tfsa', 'gic', 'savings-account']
+      : goal === 'build_wealth' || goal === 'understand_options'
+        ? ['savings-account', 'gic', 'investment-funds']
+        : ['savings-account', 'gic', 'tfsa'];
+    return {
+      ids,
+      emphasis: 'balanced',
+      featuredId: goal === 'first_home' ? 'tfsa' : goal === 'build_wealth' ? 'investment-funds' : 'savings-account',
+    };
   }
   if (horizon === 'over_5_years') {
     const ids = goal === 'build_wealth'
-      ? ['investment-funds', 'tfsa', 'rsp']
+      ? ['tfsa', 'rsp', 'investment-funds']
       : goal === 'first_home'
         ? ['savings-account', 'tfsa', 'gic']
         : goal === 'accessible_interest'

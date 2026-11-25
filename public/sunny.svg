@@ -1,1 +1,27 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><defs><radialGradient id="g" cx="40%" cy="35%" r="70%"><stop offset="0" stop-color="#FFC27A"/><stop offset=".55" stop-color="#F7781F"/><stop offset="1" stop-color="#D9530B"/></radialGradient></defs><circle cx="32" cy="32" r="26" fill="url(#g)"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-labelledby="title desc">
+  <title id="title">Sunny, illustrated AI guide</title>
+  <desc id="desc">A friendly advisor portrait with glasses, a warm smile, and an orange sun arc.</desc>
+  <defs>
+    <clipPath id="portrait">
+      <circle cx="50" cy="50" r="48"/>
+    </clipPath>
+  </defs>
+  <circle cx="50" cy="50" r="49" fill="#FFF8F0" stroke="#E7E0D8" stroke-width="2"/>
+  <g clip-path="url(#portrait)">
+    <path d="M12 57a39 39 0 0 1 71-25" fill="none" stroke="#EA7024" stroke-width="4" stroke-linecap="round"/>
+    <path d="m81 20 2.2 5.3 5.3 2.2-5.3 2.2-2.2 5.3-2.2-5.3-5.3-2.2 5.3-2.2z" fill="#F28500"/>
+    <path d="M13 104c2-17 10-25 23-29h28c13 4 21 12 23 29z" fill="#302C2A"/>
+    <path d="m37 74 13 14 13-14-5-7H42z" fill="#F3C9A6"/>
+    <path d="m37 78 13 12 13-12 5 26H32z" fill="#FFF8F0"/>
+    <path d="m37 78 13 12-8 7-8-16zm26 0L50 90l8 7 8-16z" fill="#EA7024"/>
+    <path d="M30 38c0-15 8-24 20-24s20 9 20 24v13c0 14-9 24-20 24S30 65 30 51z" fill="#F1C39F"/>
+    <path d="M29 43c-4-17 3-31 17-34 12-3 24 4 27 17 2 7 1 14-1 19l-5-12c-8 1-17-2-24-8-2 7-7 12-14 15z" fill="#302C2A"/>
+    <path d="M31 38c-4 3-6 7-5 12 1 4 3 6 6 6m37-18c4 3 6 7 5 12-1 4-3 6-6 6" fill="#F1C39F"/>
+    <path d="M34 43h14a5 5 0 0 1 5 5v4a5 5 0 0 1-5 5h-9a5 5 0 0 1-5-5v-9zm19 5a5 5 0 0 1 5-5h12v9a5 5 0 0 1-5 5h-7a5 5 0 0 1-5-5z" fill="none" stroke="#302C2A" stroke-width="2.5" stroke-linejoin="round"/>
+    <path d="M48 48h5m-14 2h5m15 0h5" fill="none" stroke="#302C2A" stroke-width="2" stroke-linecap="round"/>
+    <path d="M49 51v8l-3 2" fill="none" stroke="#D59B78" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M43 65c4 4 10 4 14 0" fill="none" stroke="#9D4F3E" stroke-width="2" stroke-linecap="round"/>
+    <circle cx="50" cy="84" r="3" fill="#F28500"/>
+    <path d="m50 79 .8 3.2L54 83l-3.2.8L50 87l-.8-3.2L46 83l3.2-.8z" fill="#FFF8F0"/>
+  </g>
+</svg>

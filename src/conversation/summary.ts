@@ -49,7 +49,7 @@ export function topicsDiscussed(state: ConversationState): string[] {
   const supporting = new Set([...m.topicsExplored.flatMap((t) => TOPICS[t].sources), ...OFFERINGS.flatMap((o) => o.sources)]);
   for (const id of m.sourcesCited) {
     const e = getEntry(id);
-    if (e && e.kind === 'general' && !supporting.has(id) && !titles.includes(e.topic)) titles.push(e.topic);
+    if (e && e.kind === 'government' && !supporting.has(id) && !titles.includes(e.topic)) titles.push(e.topic);
   }
   return titles;
 }

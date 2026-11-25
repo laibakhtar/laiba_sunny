@@ -11,7 +11,7 @@ export interface CatalogueSource {
   title: string;
   url: string;
   publisher: string;
-  kind: 'tangerine' | 'general';
+  kind: 'tangerine' | 'government';
   reviewed: string;
   keywords: string[];
 }
@@ -139,7 +139,7 @@ export const TANGERINE_CATALOGUE: CatalogueProduct[] = [
     customerFit: ['Useful to explore for money a customer wants to set aside while retaining access.', 'Tangerine describes savings goals and automatic savings features.'],
     eligibility: ['The public product summary does not give complete account-opening criteria; identity verification and account terms apply.'],
     rates: [{ label: 'Savings interest rate', type: 'variable', value: null, notes: 'Check the live rate page. Posted and promotional rates can change.' }],
-    fees: ['No monthly fee or minimum balance.', 'Other account fees may apply; check the current fee schedule.'],
+    fees: ['No monthly fee or minimum balance.'],
     limitations: ['Interest rates are variable and may change.', 'Promotional rates have separate eligibility, balance caps and timing; see the offer terms.'],
     relatedSourceIds: ['tng-live-rates', 'tng-fee-schedule'],
     openQuestions: ['Current posted and promotional rates must be checked on Tangerine’s live page.'],
@@ -170,10 +170,10 @@ export const TANGERINE_CATALOGUE: CatalogueProduct[] = [
     category: 'registered',
     availability: 'available',
     summary: 'Tangerine offers TFSA Savings, Tax-Free GIC and Tax-Free Investment Fund accounts; the TFSA is the account wrapper, not the holding itself.',
-    customerFit: ['Useful to explore when a customer wants to understand tax-free account options; access and risk depend on the holding inside the TFSA.'],
+    customerFit: ['Useful to explore when a customer wants to understand tax-free account options; TFSA Savings is generally accessible, TFSA GICs are generally locked until maturity, and investment-fund values fluctuate.'],
     eligibility: ['CRA eligibility and contribution-room rules apply; customers are responsible for confirming their own room.', 'Tangerine account-opening terms also apply.'],
     rates: [{ label: 'Rate or return', type: 'variable', value: null, notes: 'Savings and GIC rates vary by product and term; investment-fund returns are not guaranteed. Check the linked product pages.' }],
-    fees: ['Tangerine states no registered-account fees while funds remain with Tangerine; a $50 TFSA transfer-out fee is listed in the fee schedule.'],
+    fees: ['Tangerine states no registered-account fees while funds remain with Tangerine. A transfer-out fee may apply; confirm the current fee schedule.'],
     limitations: ['Contribution-room limits and over-contribution tax rules apply.', 'Risk, return and access depend on whether the account holds savings, a GIC or investment funds.'],
     relatedSourceIds: ['tng-live-rates', 'tng-fee-schedule', 'tng-account-terms', 'gov-tfsa'],
     openQuestions: ['Current rates and any promotional eligibility must be verified on the live Tangerine pages.'],

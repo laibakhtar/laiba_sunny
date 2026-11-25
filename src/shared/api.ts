@@ -4,6 +4,7 @@
  */
 import { MAX_AMOUNT } from '../lib/calc.ts';
 import type { WealthComparisonResult } from '../lib/calc.ts';
+import type { MortgageScenarioResult } from '../lib/calc.ts';
 import type { SignupProductId } from './offerings.ts';
 
 export const LIMITS = {
@@ -83,6 +84,7 @@ export interface ConversationContext {
 export type ScenarioDTO = Omit<WealthComparisonResult, 'valid' | 'errors'> & {
   compareTangerineOptions: boolean;
 };
+export type MortgageScenarioDTO = Omit<MortgageScenarioResult, 'valid' | 'errors'>;
 
 export interface ChatRequest {
   firstName: string;
@@ -101,6 +103,7 @@ export type ChatEffect =
   | { type: 'signupPrepared'; productId: SignupProductId; promotionIds?: string[] }
   | { type: 'nextStepSet'; step: NextStepKey }
   | ({ type: 'scenario' } & ScenarioDTO)
+  | ({ type: 'mortgageScenario' } & MortgageScenarioDTO)
   | { type: 'requestPermission'; reason: string }
   | { type: 'summaryReady' }
   | { type: 'handoffReady'; questions: string[] };

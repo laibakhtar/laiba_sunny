@@ -108,7 +108,7 @@ describe('product exploration follows goal and timeline', () => {
 
   it('short-term emphasises access and restrictions; long-term introduces investment funds', () => {
     const short = click(alexToHorizon(), 'Within a year');
-    expect(offeringsCard(short).ids).toEqual(['savings-account', 'gic', 'tfsa']);
+    expect(offeringsCard(short).ids).toEqual(['savings-account', 'tfsa', 'gic']);
     expect(allText(short)).toMatch(/within a year.*access and stability.*can’t be cashed before maturity/s);
     const long = click(alexToHorizon(), 'More than 5 years away');
     expect(offeringsCard(long).ids).toEqual(expect.arrayContaining(['investment-funds', 'rsp', 'tfsa']));

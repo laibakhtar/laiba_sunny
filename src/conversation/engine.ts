@@ -10,10 +10,10 @@ import { balancesOn, visibleHistory, type Relationship } from '../data/customers
 import { TOPICS, type TopicId } from '../data/education';
 import { applyAllocations, summarizeAccount, type Allocation } from '../domain/allocations';
 import { DEFAULT_SIGNAL_CONFIG, evaluateElevatedBalance, explainSignal, type SignalConfig, type SignalResult } from '../domain/signal';
-import { projectWealthComparison, projectWithoutReturns } from '../lib/calc';
+import { calculateMortgageScenario, projectWealthComparison, projectWithoutReturns } from '../lib/calc';
 import { GOALS, HORIZONS, NEXT_STEPS, type ChatEffect } from '../shared/api';
 import { validateSourceIds } from '../shared/knowledge';
-import { eligiblePromotionIds, getOffering, initialOfferingIds, isSignupProductId, namedOfferingIds, offeringPlan, offeringReasons, offeringUrl, OFFERINGS, validateOfferingIds } from '../shared/offerings';
+import { eligiblePromotionIds, getOffering, initialOfferingIds, isSignupProductId, namedOfferingIds, offeringContextForMessages, offeringPlan, offeringReasons, offeringUrl, OFFERINGS, validateOfferingIds, type OfferingSignals } from '../shared/offerings';
 import { cleanSuggestions, latestCustomerText } from './navigation';
 import { GOAL_LABEL, HORIZON_LABEL, NEXT_STEP_LABEL, script } from './script';
 import type {
@@ -179,6 +179,17 @@ function push(d: Draft, msg: Omit<Message, 'id'>) {
 function say(d: Draft, text: string, card?: MessageCard, extra?: Partial<Message>) {
   push(d, { role: 'sunny', text, ...(card ? { card } : {}), ...extra });
 }
+function attachCardToReply(d: Draft, card: MessageCard) {
+  for (let i = d.messages.length - 1; i >= 0; i -= 1) {
+    const message = d.messages[i];
+    if (message.role === 'sunny' && !message.local && message.text.trim()) {
+      if (!message.card) d.messages[i] = { ...message, card };
+      else say(d, '', card, { local: true });
+      return;
+    }
+  }
+  say(d, '', card, { local: true });
+}
 function customerSays(d: Draft, text: string) {
   push(d, { role: 'customer', text });
 }
@@ -273,8 +284,8 @@ function markShown(d: Draft, ids: string[]) {
   cite(d, [...new Set(ids.flatMap((id) => getOffering(id)?.sources ?? []))]);
 }
 
-function featuredOffering(ids: string[], goal: Memory['goal'], horizon: Memory['horizon']) {
-  const plan = offeringPlan(goal?.type ?? null, horizon);
+function featuredOffering(ids: string[], goal: Memory['goal'], horizon: Memory['horizon'], signals: OfferingSignals = {}) {
+  const plan = offeringPlan(goal?.type ?? null, horizon, signals);
   const featuredId = ids.includes(plan.featuredId) ? plan.featuredId : ids.find((id) => id !== 'advisors');
   return featuredId
     ? { featuredId }
@@ -502,14 +513,28 @@ function applyAiEffects(d: Draft, effects: ChatEffect[]) {
       case 'offeringsShown': {
         const submittedIds = validateOfferingIds(e.ids);
         const customerText = latestCustomerText(d) ?? '';
+        const turnContext = offeringContextForMessages(
+          m.goal?.type ?? null,
+          m.horizon,
+          d.messages.filter((message) => message.role === 'customer').map((message) => message.text),
+        );
         const browseAll = e.browseAll === true && /\b(?:all|every|full list|browse|everything|other options|whole catalogue)\b/i.test(customerText);
+        const account = m.permission === 'granted' ? currentBalances(d) : null;
+        const signals: OfferingSignals = m.permission === 'granted'
+          ? {
+              hasUnassignedCash: allocationSnapshot(d).unassigned > 0,
+              chequingSurplusSignal: signalFor(d).show,
+              monthlyExpenses: d.profile.monthlyExpenses,
+              ...(account && account.savings > 0 ? { hasSavingsAccount: true } : {}),
+            }
+          : {};
         const ids = browseAll
           ? submittedIds
-          : initialOfferingIds(m.goal?.type ?? null, m.horizon, namedOfferingIds(customerText), customerText);
+          : initialOfferingIds(turnContext.goal, turnContext.horizon, namedOfferingIds(customerText), customerText, signals);
         if (ids.length) {
           const eligiblePromotions = eligiblePromotionIds(ids, customerText);
           const promotionIds = (e.promotionIds ?? []).filter((id) => eligiblePromotions.includes(id));
-          const reasons = browseAll ? undefined : offeringReasons(ids, m.goal?.type ?? null, m.horizon);
+          const reasons = browseAll ? undefined : e.reasons ?? offeringReasons(ids, turnContext.goal, turnContext.horizon, signals);
           markShown(d, ids);
           say(
             d,
@@ -517,13 +542,13 @@ function applyAiEffects(d: Draft, effects: ChatEffect[]) {
             {
               kind: 'offerings',
               ids,
-              reason: (e.reason || script.offeringsReason(m.goal?.type ?? null, m.horizon)).slice(0, 200),
+              reason: (e.reason || script.offeringsReason(turnContext.goal, turnContext.horizon)).slice(0, 200),
               ...(reasons ? { reasons } : {}),
               ...(promotionIds.length ? { promotionIds } : {}),
               ...(e.featuredId && ids.includes(e.featuredId)
                 ? { featuredId: e.featuredId }
                 : ids.length > 0
-                  ? featuredOffering(ids, m.goal, m.horizon)
+                  ? featuredOffering(ids, turnContext.goal ? { type: turnContext.goal, detail: null } : null, turnContext.horizon, signals)
                   : {}),
             },
             { local: true },
@@ -543,12 +568,14 @@ function applyAiEffects(d: Draft, effects: ChatEffect[]) {
           startingAmount: e.startingAmount,
           monthlyContribution: e.monthlyContribution,
           years: e.years,
+          tfsaSavingsRate: e.tfsaSavingsRate,
           customRate: e.customRate,
         });
         if (!projected.valid) break;
         const compareTangerineOptions = e.compareTangerineOptions;
         const comparison = {
           years: projected.years,
+          tfsaSavingsRate: projected.tfsaSavingsRate,
           startingAmount: projected.startingAmount,
           monthlyContribution: projected.monthlyContribution,
           customRate: projected.customRate,
@@ -559,7 +586,35 @@ function applyAiEffects(d: Draft, effects: ChatEffect[]) {
             : projected.options.filter((option) => option.id === 'contributionsOnly'),
           yearlyBreakdown: projected.yearlyBreakdown,
         };
-        say(d, '', { kind: 'wealthComparison', comparison }, { local: true });
+        attachCardToReply(d, { kind: 'wealthComparison', comparison });
+        break;
+      }
+      case 'mortgageScenario': {
+        const projected = calculateMortgageScenario(e);
+        if (!projected.valid) break;
+        const scenario = {
+          mode: projected.mode,
+          homePrice: projected.homePrice,
+          mortgageAmount: projected.mortgageAmount,
+          downPayment: projected.downPayment,
+          annualIncome: projected.annualIncome,
+          monthlyDebts: projected.monthlyDebts,
+          annualRate: projected.annualRate,
+          amortizationYears: projected.amortizationYears,
+          paymentFrequency: projected.paymentFrequency,
+          regularPayment: projected.regularPayment,
+          monthlyPayment: projected.monthlyPayment,
+          termYears: projected.termYears,
+          totalPaymentsInTerm: projected.totalPaymentsInTerm,
+          principalPaidInTerm: projected.principalPaidInTerm,
+          interestPaidInTerm: projected.interestPaidInTerm,
+          gdsMonthlyLimit: projected.gdsMonthlyLimit,
+          tdsMonthlyLimit: projected.tdsMonthlyLimit,
+          monthlyHousingPaymentLimit: projected.monthlyHousingPaymentLimit,
+          maxMortgageAmount: projected.maxMortgageAmount,
+          maxPurchasePrice: projected.maxPurchasePrice,
+        };
+        attachCardToReply(d, { kind: 'mortgageScenario', scenario });
         break;
       }
       case 'requestPermission':

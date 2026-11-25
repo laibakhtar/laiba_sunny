@@ -83,16 +83,12 @@ function classify(raw: string, state: ConversationState): SunnyEvent {
   const previousSunny = [...state.messages].reverse().find((m) => m.role === 'sunny')?.text ?? '';
   const signupProduct = resolveSignupProduct(
     raw,
-    [...state.messages]
-      .filter((m) => m.role === 'sunny')
-      .slice(-5)
-      .reverse()
-      .map((m) => {
-        const card = m.card?.kind === 'offerings' && m.card.featuredId ? getOffering(m.card.featuredId) : undefined;
-        const listed = m.card?.kind === 'offerings' ? m.card.ids.map((id) => getOffering(id)?.name ?? '').join(' ') : '';
-        return `${m.text} ${card?.name ?? ''} ${listed}`;
-      }),
-    state.memory.offeringsShown,
+    [...state.messages].reverse().map((m) => {
+      const signup = m.card?.kind === 'signup' ? getOffering(m.card.productId) : undefined;
+      const featured = m.card?.kind === 'offerings' && m.card.featuredId ? getOffering(m.card.featuredId) : undefined;
+      const listed = m.card?.kind === 'offerings' ? m.card.ids.map((id) => getOffering(id)?.name ?? '').join(' ') : '';
+      return `${m.text} ${signup?.name ?? ''} ${featured?.name ?? ''} ${listed}`;
+    }),
   );
   if (signupProduct) return { type: 'startSignup', productId: signupProduct };
 

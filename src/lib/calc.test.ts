@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bandForMonths, calculateScenario, homeSavingsAfterReserve, monthlyCashFlow, parseAmount, projectWealthComparison } from './calc';
+import { bandForMonths, calculateMortgageScenario, calculateScenario, homeSavingsAfterReserve, monthlyCashFlow, parseAmount, projectWealthComparison } from './calc';
 
 describe('calculateScenario', () => {
   it('matches the default confirmed scenario for Alex', () => {
@@ -84,10 +84,11 @@ describe('projectWithoutReturns', () => {
 });
 
 describe('projectWealthComparison', () => {
-  it('returns monthly-compounded savings and fund series plus the annual GIC benchmark', () => {
-    const result = projectWealthComparison({ startingAmount: 1000, monthlyContribution: 100, years: 1, customRate: 5 });
+  it('returns separate Savings and TFSA Savings series and leaves the fund optional', () => {
+    const result = projectWealthComparison({ startingAmount: 1000, monthlyContribution: 100, years: 1, customRate: null });
     expect(result.valid).toBe(true);
-    expect(result.customRate).toBe(5);
+    expect(result.customRate).toBeNull();
+    expect(result.tfsaSavingsRate).toBe(0.3);
     expect(result.totalContributions).toBe(2200);
     expect(result.yearlyBreakdown).toHaveLength(2);
     expect(result.yearlyBreakdown[0]).toMatchObject({
@@ -97,7 +98,7 @@ describe('projectWealthComparison', () => {
       savingsAccount: 1000,
       tfsaSavings: 1000,
       gicBenchmark: 1000,
-      illustrativeFund: 1000,
+      illustrativeFund: null,
     });
     expect(result.yearlyBreakdown[1]).toMatchObject({
       year: 1,
@@ -106,10 +107,8 @@ describe('projectWealthComparison', () => {
       gicBenchmark: 2236,
     });
     expect(result.yearlyBreakdown[1].savingsAccount).toBeGreaterThan(2200);
-    expect(result.yearlyBreakdown.map((year) => year.tfsaSavings)).toEqual(result.yearlyBreakdown.map((year) => year.savingsAccount));
-    expect(result.options.find((option) => option.id === 'tfsaSavings')).toMatchObject({ annualRate: 0.3, endingBalance: result.yearlyBreakdown[1].savingsAccount });
-    expect(result.options.find((option) => option.id === 'savingsAccount')?.annualRate).toBe(0.3);
-    expect(result.yearlyBreakdown[1].illustrativeFund!).toBeGreaterThan(result.yearlyBreakdown[1].savingsAccount);
+    expect(result.yearlyBreakdown[1].tfsaSavings).toBe(result.yearlyBreakdown[1].savingsAccount);
+    expect(result.options.some((option) => option.id === 'illustrativeFund')).toBe(false);
     expect(result.options.find((option) => option.id === 'gicBenchmark')).toMatchObject({
       annualRate: 3.6,
       endingBalance: 2236,
@@ -117,33 +116,72 @@ describe('projectWealthComparison', () => {
     });
   });
 
-  it('omits fund projections until a valid hypothetical return is entered', () => {
-    const input = { startingAmount: 1000, monthlyContribution: 100, years: 1 };
-    const empty = projectWealthComparison(input);
-    expect(empty.valid).toBe(true);
-    expect(empty.customRate).toBeNull();
-    expect(empty.options.map((o) => o.id)).toEqual(['contributionsOnly', 'savingsAccount', 'tfsaSavings', 'gicBenchmark']);
-    expect(empty.yearlyBreakdown.every((year) => year.illustrativeFund === null)).toBe(true);
-    for (const rate of [-5, 0, 5]) {
-      const result = projectWealthComparison({ ...input, customRate: rate });
-      expect(result.valid).toBe(true);
-      expect(result.options.find((o) => o.id === 'illustrativeFund')?.annualRate).toBe(rate);
-    }
-    expect(projectWealthComparison({ ...input, customRate: -100 }).valid).toBe(false);
+  it('treats an entered fund rate as an effective annual return', () => {
+    const result = projectWealthComparison({ startingAmount: 1000, monthlyContribution: 0, years: 1, customRate: 12 });
+    const fund = result.options.find((option) => option.id === 'illustrativeFund');
+    expect(fund?.endingBalance).toBe(1120);
+    expect(fund?.rateDescription).toMatch(/effective annual return/i);
   });
 
-  it.each([[12, 1120], [0, 1000], [-50, 500], [-99.99, 0.1]])(
-    'uses %s%% as the effective annual fund return', (customRate, expected) => {
-      const result = projectWealthComparison({ startingAmount: 1000, monthlyContribution: 0, years: 1, customRate });
-      expect(result.options.find((option) => option.id === 'illustrativeFund')?.endingBalance).toBeCloseTo(expected, 2);
-    },
-  );
+  it('applies an editable TFSA Savings annual-rate assumption independently', () => {
+    const result = projectWealthComparison({ startingAmount: 1000, monthlyContribution: 0, years: 1, tfsaSavingsRate: 6, customRate: null });
+    expect(result.options.find((option) => option.id === 'tfsaSavings')).toMatchObject({ annualRate: 6, endingBalance: 1061.68 });
+    expect(result.options.find((option) => option.id === 'savingsAccount')?.annualRate).toBe(0.3);
+  });
 
-  it('adds fund contributions at each month-end using the equivalent monthly rate', () => {
-    const result = projectWealthComparison({ startingAmount: 0, monthlyContribution: 100, years: 1, customRate: 12 });
-    const monthlyFactor = 1.12 ** (1 / 12);
-    const expected = 100 * (1.12 - 1) / (monthlyFactor - 1);
-    expect(result.options.find((option) => option.id === 'illustrativeFund')?.endingBalance).toBeCloseTo(expected, 2);
+  describe('calculateMortgageScenario', () => {
+    it('uses Canadian semi-annual compounding for monthly and biweekly payment estimates', () => {
+      const monthly = calculateMortgageScenario({
+        mode: 'payment',
+        homePrice: 500_000,
+        downPayment: 100_000,
+        annualRate: 4.79,
+        amortizationYears: 25,
+      });
+      expect(monthly).toMatchObject({
+        valid: true,
+        mortgageAmount: 400_000,
+        annualRate: 4.79,
+        amortizationYears: 25,
+        paymentFrequency: 'monthly',
+        termYears: 5,
+      });
+      expect(monthly.regularPayment).toBeGreaterThan(2200);
+      expect(monthly.regularPayment).toBeLessThan(2400);
+      expect(monthly.principalPaidInTerm).toBeGreaterThan(0);
+      expect(monthly.interestPaidInTerm).toBeGreaterThan(monthly.principalPaidInTerm);
+      expect(monthly.totalPaymentsInTerm).toBeCloseTo(monthly.principalPaidInTerm + monthly.interestPaidInTerm, 1);
+
+      const biweekly = calculateMortgageScenario({
+        mode: 'payment',
+        mortgageAmount: 400_000,
+        annualRate: 4.79,
+        amortizationYears: 25,
+        paymentFrequency: 'biweekly',
+      });
+      expect(biweekly.valid).toBe(true);
+      expect(biweekly.regularPayment).toBeGreaterThan(1000);
+      expect(biweekly.regularPayment).toBeLessThan(monthly.regularPayment);
+      expect(Math.abs(biweekly.monthlyPayment - monthly.monthlyPayment)).toBeLessThan(5);
+    });
+
+    it('estimates affordability from GDS/TDS limits and rejects invalid figures', () => {
+      const estimate = calculateMortgageScenario({
+        mode: 'affordability',
+        annualIncome: 120_000,
+        monthlyDebts: 500,
+        downPayment: 50_000,
+        annualRate: 4.79,
+      });
+      expect(estimate.valid).toBe(true);
+      expect(estimate.gdsMonthlyLimit).toBe(3900);
+      expect(estimate.tdsMonthlyLimit).toBe(3900);
+      expect(estimate.monthlyHousingPaymentLimit).toBe(3900);
+      expect(estimate.maxPurchasePrice).toBeGreaterThan(estimate.maxMortgageAmount);
+      expect(estimate.monthlyPayment).toBe(3900);
+      expect(calculateMortgageScenario({ mode: 'payment', homePrice: 100_000, downPayment: 120_000 }).valid).toBe(false);
+      expect(calculateMortgageScenario({ mode: 'affordability', annualIncome: -1 }).valid).toBe(false);
+    });
   });
 
   it('selects the 3-year and 5-year GIC benchmark rates and rejects invalid horizons', () => {

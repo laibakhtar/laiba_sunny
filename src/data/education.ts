@@ -116,10 +116,10 @@ export const TOPICS: Record<TopicId, TopicContent> = {
     question: 'How does a TFSA work?',
     title: 'Tax-Free Savings Account (TFSA)',
     body: [
-      'A TFSA is a registered account that can hold savings or investments. Contributions aren’t tax-deductible, but income earned inside is generally tax-free, including when you withdraw.',
-      'With us, a TFSA can hold a savings account, a GIC or investment funds. Access depends on the product: a GIC may be locked until maturity. You’ll want to keep an eye on your contribution room.',
+      'A TFSA is a registered account that can hold savings or investments. Contributions aren’t tax-deductible, but income earned inside is generally tax-free. Access depends on what the TFSA holds: TFSA Savings is generally flexible, while a TFSA GIC is generally locked until maturity.',
+      'With us, a TFSA can hold a savings account, a GIC or investment funds. You’ll want to keep an eye on your contribution room.',
     ],
-    simple: 'A TFSA generally lets money grow tax-free. When you can take it out depends on what you hold; a GIC may be locked until maturity.',
+    simple: 'A TFSA can grow money without tax. TFSA Savings is generally flexible, but a TFSA GIC is generally locked until maturity.',
     sources: ['gov-tfsa', 'tng-tfsa-options'],
     related: ['tfsa_vs_rrsp', 'account_vs_holdings', 'funds'],
     draft: false,
@@ -143,7 +143,7 @@ export const TOPICS: Record<TopicId, TopicContent> = {
     title: 'TFSA and RRSP at a high level',
     body: ['Both are accounts with tax advantages; both can hold savings, GICs or funds. The main difference is when tax applies:'],
     points: [
-      'TFSA: contributions aren’t deductible; growth and withdrawals are generally tax-free. Access depends on what you hold; a GIC may be locked until maturity.',
+      'TFSA: contributions aren’t deductible; growth and withdrawals are generally tax-free, but access depends on the holding—TFSA Savings is generally flexible while a TFSA GIC is generally locked until maturity.',
       'RRSP: contributions can reduce taxable income; growth is tax-deferred; withdrawals are generally taxable.',
     ],
     simple: 'TFSA: no tax break now, no tax later. RRSP: tax break now, tax later when you withdraw.',

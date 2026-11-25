@@ -6,6 +6,7 @@ import type { SignalResult } from '../domain/signal';
 import {
   MAX_AMOUNT,
   MAX_WEALTH_YEARS,
+  calculateMortgageScenario,
   projectWealthComparison,
   projectWithoutReturns,
   type WealthOptionId,
@@ -16,7 +17,7 @@ import { offerIsCurrentAsOf } from '../shared/catalogue';
 import { getEntry, type KnowledgeEntry } from '../shared/knowledge';
 import { getCatalogueOffer, getOffering, offeringUrl, signupChecklist, SUPPORT_LINKS, type SignupProductId } from '../shared/offerings';
 import type { AllocationSnapshot, ScenarioFacts } from '../conversation/types';
-import type { ScenarioDTO } from '../shared/api';
+import type { MortgageScenarioDTO, ScenarioDTO } from '../shared/api';
 
 /** Key points for a scripted educational answer (the answer itself is the message text). */
 export function EducationCard({ topic }: { topic: TopicId }) {
@@ -47,10 +48,21 @@ export function SourceList({ ids }: { ids: string[] }) {
       <ul>
         {entries.map((e) => (
           <li key={e.id}>
-            <span className={`source-kind source-${e.kind}`}>{e.kind === 'tangerine' ? 'Tangerine' : 'General'}</span>
+            <span className={`source-kind source-${e.kind}`}>{e.kind === 'tangerine' ? 'Tangerine' : 'Government / agency'}</span>
             <a href={e.url} target="_blank" rel="noopener noreferrer">
               {e.publisher}: {e.pageTitle}
             </a>
+            {e.resources?.length ? (
+              <p className="source-resources">
+                Related resources:{' '}
+                {e.resources.map((resource, index) => (
+                  <span key={resource.url}>
+                    {index > 0 && ' · '}
+                    <a href={resource.url} target="_blank" rel="noopener noreferrer">{resource.label}</a>
+                  </span>
+                ))}
+              </p>
+            ) : null}
             <span className="source-date">Reviewed {formatDate(e.reviewed)}</span>
           </li>
         ))}
@@ -206,12 +218,11 @@ export function AllocationCard({ snapshot }: { snapshot: AllocationSnapshot }) {
 export function OfferingsCard({ ids, reason, reasons, featuredId, promotionIds = [], onExplore }: { ids: string[]; reason: string; reasons?: Record<string, string>; featuredId?: string; promotionIds?: string[]; onExplore?: (id: string) => void }) {
   const list = ids.map(getOffering).filter((o): o is NonNullable<typeof o> => Boolean(o));
   if (!list.length) return null;
-  const featured = list.find((o) => o.id === featuredId);
+  const conciseReason = reason.replace(/\s*Account signals considered:[\s\S]*$/i, '').trim();
   return (
     <div className="card offerings-card" aria-label="Tangerine offerings to learn about">
       <p className="card-kicker">Tangerine products to explore</p>
-      <p className="offerings-reason">{reason}</p>
-      {featured && <p className="offering-featured-label">Explore first: <strong>{featured.name}</strong></p>}
+      <p className="offerings-reason">{conciseReason || 'Compare the features, terms and trade-offs for these Tangerine options.'}</p>
       <div className="offerings">
         {list.map((o) => {
           const url = offeringUrl(o);
@@ -264,7 +275,7 @@ export function OfferingsCard({ ids, reason, reasons, featuredId, promotionIds =
                 <p className="offering-links">
                   {url && (
                     <a href={url} target="_blank" rel="noopener noreferrer" onClick={() => onExplore?.(o.id)}>
-                      {o.availability === 'unconfirmed' ? 'Tangerine information' : 'Official Tangerine page'}
+                      {o.availability === 'unconfirmed' ? 'Tangerine information' : 'Official product page'}
                     </a>
                   )}
                   {o.sources.slice(1).map((id) => {
@@ -298,11 +309,140 @@ export function SignupCard({ productId, promotionIds = [] }: { productId: Signup
         {signupChecklist(productId).map((item) => <li key={item}>{item}</li>)}
       </ul>
       <a className="btn btn-primary" href={url} target="_blank" rel="noopener noreferrer">
-        Start Application on Tangerine.ca
+        Open / Apply on Tangerine.ca
       </a>
       <p className="card-note">
         The link opens Tangerine’s product page. Any application is completed directly with Tangerine; Sunny never collects your SIN, personal income details, login credentials or application information, and cannot check eligibility or guarantee approval.
       </p>
+    </div>
+  );
+}
+
+export function MortgageCalculatorCard({ scenario }: { scenario: MortgageScenarioDTO }) {
+  const id = useId();
+  const [values, setValues] = useState({
+    mode: scenario.mode,
+    homePrice: String(scenario.homePrice),
+    downPayment: String(scenario.downPayment),
+    annualIncome: String(scenario.annualIncome),
+    monthlyDebts: String(scenario.monthlyDebts),
+    annualRate: String(scenario.annualRate),
+    amortizationYears: String(scenario.amortizationYears),
+    paymentFrequency: scenario.paymentFrequency,
+  });
+  const number = (value: string) => value.trim() ? Number(value) : Number.NaN;
+  const projection = calculateMortgageScenario({
+    mode: values.mode,
+    homePrice: number(values.homePrice),
+    downPayment: number(values.downPayment),
+    annualIncome: number(values.annualIncome),
+    monthlyDebts: number(values.monthlyDebts),
+    annualRate: number(values.annualRate),
+    amortizationYears: number(values.amortizationYears),
+    paymentFrequency: values.paymentFrequency,
+  });
+  const set = (key: keyof typeof values, value: string) => setValues((current) => ({ ...current, [key]: value }));
+  const fields: {
+    key: 'homePrice' | 'downPayment' | 'annualIncome' | 'monthlyDebts' | 'annualRate' | 'amortizationYears';
+    label: string;
+    min: number;
+    max: number;
+    step: number;
+    rangeMax: number;
+    rangeStep: number;
+    prefix?: string;
+    suffix?: string;
+  }[] = [
+    { key: 'homePrice', label: 'Home Price ($)', min: 0, max: MAX_AMOUNT, step: 1000, rangeMax: 1_500_000, rangeStep: 10_000, prefix: '$' },
+    { key: 'downPayment', label: 'Down Payment ($)', min: 0, max: MAX_AMOUNT, step: 1000, rangeMax: 500_000, rangeStep: 5_000, prefix: '$' },
+    { key: 'annualIncome', label: 'Annual Income ($)', min: 0, max: MAX_AMOUNT, step: 1000, rangeMax: 500_000, rangeStep: 5_000, prefix: '$' },
+    { key: 'monthlyDebts', label: 'Monthly Debts ($)', min: 0, max: MAX_AMOUNT, step: 50, rangeMax: 10_000, rangeStep: 100, prefix: '$' },
+    { key: 'annualRate', label: 'Interest Rate (%)', min: 0, max: 100, step: 0.01, rangeMax: 15, rangeStep: 0.05, suffix: '%' },
+    { key: 'amortizationYears', label: 'Amortization (Years)', min: 1, max: 40, step: 1, rangeMax: 40, rangeStep: 1, suffix: 'years' },
+  ];
+
+  return (
+    <div className="card mortgage-calculator-card" aria-label="Interactive mortgage calculator">
+      <div className="card-head">
+        <p className="card-kicker">Mortgage Explorer &amp; Calculator</p>
+        <span className="tag">Illustrative only</span>
+      </div>
+      <section className="mortgage-overview" aria-label="Tangerine fixed and variable mortgage overview">
+        <div className="mortgage-overview-options">
+          <div>
+            <h3>Fixed rate</h3>
+            <p>Tangerine offers closed mortgages with fixed-rate options. Compare available terms and current rates on Tangerine’s live rate page.</p>
+          </div>
+          <div>
+            <h3>Variable rate</h3>
+            <p>Tangerine also offers closed mortgages with variable-rate options. Rates and terms depend on the selected mortgage; this illustration does not forecast rate changes.</p>
+          </div>
+        </div>
+        <p className="card-note">
+          Tangerine lists a rate hold of up to 120 days before closing and prepayment options. It says to allow at least 15 business days from application submission to funding.
+        </p>
+      </section>
+      <p className="mortgage-reference-rate">
+        Illustrative reference rate: <strong>4.79%</strong> — not a live Tangerine rate or quote.
+      </p>
+      <div className="mortgage-mode" role="group" aria-label="Mortgage calculation type">
+        <button type="button" className={`chip${values.mode === 'payment' ? ' chip-primary' : ''}`} aria-pressed={values.mode === 'payment'} onClick={() => set('mode', 'payment')}>Payment estimate</button>
+        <button type="button" className={`chip${values.mode === 'affordability' ? ' chip-primary' : ''}`} aria-pressed={values.mode === 'affordability'} onClick={() => set('mode', 'affordability')}>Affordability estimate</button>
+      </div>
+      <div className="mortgage-controls">
+        {fields
+          .filter((field) => values.mode === 'payment'
+            ? !['annualIncome', 'monthlyDebts'].includes(field.key)
+            : field.key !== 'homePrice')
+          .map((field) => {
+            const current = number(values[field.key]);
+            const rangeValue = Number.isFinite(current) ? Math.min(field.rangeMax, Math.max(field.min, current)) : field.min;
+            const inputId = `${id}-${field.key}`;
+            return (
+              <div className="wealth-control" key={field.key}>
+                <label htmlFor={inputId}>{field.label}</label>
+                <div className="wealth-number-input">
+                  {field.prefix && <span aria-hidden="true">{field.prefix}</span>}
+                  <input id={inputId} type="number" min={field.min} max={field.max} step={field.step} value={values[field.key]} onChange={(event) => set(field.key, event.target.value)} />
+                  {field.suffix && <span aria-hidden="true">{field.suffix}</span>}
+                </div>
+                <input type="range" min={field.min} max={field.rangeMax} step={field.rangeStep} value={rangeValue} aria-label={`Adjust ${field.label.toLowerCase()}`} onChange={(event) => set(field.key, event.target.value)} />
+              </div>
+            );
+          })}
+        <div className="wealth-control">
+          <label htmlFor={`${id}-frequency`}>Payment Frequency</label>
+          <select id={`${id}-frequency`} value={values.paymentFrequency} onChange={(event) => set('paymentFrequency', event.target.value)}>
+            <option value="monthly">Monthly</option>
+            <option value="biweekly">Biweekly</option>
+          </select>
+        </div>
+      </div>
+      {projection.valid ? (
+        <div className="mortgage-results" aria-live="polite">
+          {values.mode === 'affordability' ? (
+            <>
+              <div><span>Illustrative maximum purchase price</span><strong>{money(projection.maxPurchasePrice)}</strong></div>
+              <div><span>Estimated mortgage amount</span><strong>{money(projection.maxMortgageAmount)}</strong></div>
+              <div><span>Monthly housing payment limit</span><strong>{money(projection.monthlyHousingPaymentLimit)}</strong></div>
+              <p className="card-note">Uses 39% GDS / 44% TDS. Property taxes, heating, condo fees and mortgage insurance are not included.</p>
+            </>
+          ) : (
+            <>
+              <div><span>{values.paymentFrequency === 'monthly' ? 'Monthly payment' : 'Biweekly payment'}</span><strong>{money(projection.regularPayment)}</strong></div>
+              <div><span>Principal paid in the first 5 years</span><strong>{money(projection.principalPaidInTerm)}</strong></div>
+              <div><span>Interest paid in the first 5 years</span><strong>{money(projection.interestPaidInTerm)}</strong></div>
+            </>
+          )}
+        </div>
+      ) : <p className="field-error" role="alert">{Object.values(projection.errors)[0]}</p>}
+      <p className="card-note">
+        Uses Canadian semi-annual compounding. The affordability estimate uses 39% GDS / 44% TDS and excludes property taxes, heating, condo fees and mortgage insurance; it is not a qualification assessment.
+      </p>
+      <div className="mortgage-actions">
+        <a className="btn btn-primary" href="https://www.tangerine.ca/en/rates/mortgage-rates" target="_blank" rel="noopener noreferrer">Check live mortgage rates</a>
+        <a className="btn btn-secondary" href="https://www.tangerine.ca/en/personal/borrow/mortgage" target="_blank" rel="noopener noreferrer">Explore Tangerine Mortgages</a>
+      </div>
     </div>
   );
 }
@@ -422,6 +562,7 @@ export function WealthComparisonCard({ comparison }: { comparison: ScenarioDTO }
     startingAmount: String(comparison.startingAmount),
     monthlyContribution: String(comparison.monthlyContribution),
     years: String(comparison.years),
+    tfsaSavingsRate: String(comparison.tfsaSavingsRate),
     customRate: comparison.customRate === null ? '' : String(comparison.customRate),
   });
   const numeric = (value: string) => value.trim() ? Number(value) : Number.NaN;
@@ -429,6 +570,7 @@ export function WealthComparisonCard({ comparison }: { comparison: ScenarioDTO }
     startingAmount: numeric(values.startingAmount),
     monthlyContribution: numeric(values.monthlyContribution),
     years: numeric(values.years),
+    tfsaSavingsRate: numeric(values.tfsaSavingsRate),
     customRate: values.customRate.trim() ? numeric(values.customRate) : null,
   });
   const visibleOptions = comparison.compareTangerineOptions
@@ -439,6 +581,7 @@ export function WealthComparisonCard({ comparison }: { comparison: ScenarioDTO }
     { key: 'startingAmount' as const, label: 'Starting Amount ($)', min: 0, max: MAX_AMOUNT, step: 0.01, rangeMax: 1_000_000, rangeStep: 1_000, prefix: '$' },
     { key: 'monthlyContribution' as const, label: 'Monthly Contribution ($)', min: 0, max: MAX_AMOUNT, step: 0.01, rangeMax: 20_000, rangeStep: 100, prefix: '$' },
     { key: 'years' as const, label: 'Time Horizon (Years)', min: 1, max: MAX_WEALTH_YEARS, step: 1, rangeMax: MAX_WEALTH_YEARS, rangeStep: 1, prefix: '' },
+    { key: 'tfsaSavingsRate' as const, label: 'TFSA Savings Annual Rate (%)', min: 0, max: 100, step: 0.01, rangeMax: 10, rangeStep: 0.05, prefix: '' },
     { key: 'customRate' as const, label: 'Custom Rate (%)', min: -99.99, max: 100, step: 0.01, rangeMax: 20, rangeStep: 0.25, prefix: '' },
   ];
 
@@ -449,9 +592,8 @@ export function WealthComparisonCard({ comparison }: { comparison: ScenarioDTO }
         <span className="tag">Illustrative, not a forecast</span>
       </div>
       <p className="card-note">
-        Adjust any value to update the chart. Both savings accounts use a variable 0.30% annual base-rate assumption; GIC rates are benchmark assumptions, not a live quote. Enter a hypothetical effective annual return to show an investment fund illustration. The entered return is assumed after fees, illustrative, and not guaranteed; it is converted to an equivalent monthly rate.
+        Adjust any value to update the chart. Regular Savings and TFSA Savings are separate alternatives, each using an editable illustrative 0.30% annual-rate assumption; this is not a universal TFSA return. GIC rates are benchmark assumptions, not a live quote. Enter a hypothetical effective annual return to show an investment fund illustration; it is assumed after fees, illustrative, and not guaranteed.
       </p>
-      <p className="card-note">These are separate alternatives using the same starting amount and contributions, not amounts to add together. Their lines overlap when their rates match. Balances are before tax: TFSA Savings interest is generally tax-free, while regular Savings interest may be taxable. Personal taxes and TFSA contribution room are not calculated.</p>
       <div className="wealth-controls">
         {controls.map((control) => {
           const number = numeric(values[control.key]);
@@ -524,7 +666,7 @@ export function WealthComparisonCard({ comparison }: { comparison: ScenarioDTO }
         <p className="field-error" role="alert">{Object.values(projected.errors)[0]}</p>
       )}
       <p className="card-note">
-        The GIC model pools monthly contributions at each year-end; renewals beyond five years assume the same benchmark rate. Fund fees vary by portfolio; no additional fees are deducted from the entered after-fee return. Check Tangerine’s current rates and terms before making decisions.
+        The GIC model pools monthly contributions at each year-end; renewals beyond five years assume the same benchmark rate. No additional fees are deducted from the entered after-fee fund return. Check Tangerine’s current rates and terms before making decisions.
       </p>
       <p className="offering-links">
         Official details:{' '}

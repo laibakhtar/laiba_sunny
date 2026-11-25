@@ -2,7 +2,7 @@ import type { Relationship } from '../data/customers';
 import type { TopicId } from '../data/education';
 import type { Allocation } from '../domain/allocations';
 import type { SignalConfig } from '../domain/signal';
-import type { AiErrorCode, ChatResponse, ScenarioDTO } from '../shared/api';
+import type { AiErrorCode, ChatResponse, MortgageScenarioDTO, ScenarioDTO } from '../shared/api';
 import type { GoalType, SignupProductId } from '../shared/offerings';
 
 export type View = 'dashboard' | 'chat' | 'handoff' | 'summary';
@@ -114,6 +114,7 @@ export type MessageCard =
   | { kind: 'signup'; productId: SignupProductId; promotionIds?: string[] }
   | { kind: 'scenario'; input: ScenarioFacts; hypothetical?: boolean }
   | { kind: 'wealthComparison'; comparison: ScenarioDTO }
+  | { kind: 'mortgageScenario'; scenario: MortgageScenarioDTO }
   | { kind: 'factsUpdated'; changes: string[] }
   | { kind: 'action'; action: 'summary' | 'handoff' }
   | { kind: 'error'; code: AiErrorCode; message: string };
